@@ -130,16 +130,70 @@ type : str
 units : str
     Optional units for the result. If present, the value should be in these units.
 """
-# metadata["results"] = {
-#     "total_energy": {
-#         "calculation": [
-#             "energy",
-#             "optimization",
-#         ],
-#         "description": "The total energy",
-#         "dimensionality": "scalar",
-#         "property": "total energy#IonicConductivity#{model}",
-#         "type": "float",
-#         "units": "E_h",
-#     },
-# }
+metadata["results"] = {
+    "sigma": {
+        "description": "The ionic conductivity (Einstein-Helfand)",
+        "dimensionality": "scalar",
+        "property": "ionic conductivity#Einstein-Helfand#{model}",
+        "type": "float",
+        "units": "S/m",
+    },
+    "sigma,stderr": {
+        "description": "The standard error of the ionic conductivity",
+        "dimensionality": "scalar",
+        "property": "ionic conductivity,stderr#Einstein-Helfand#{model}",
+        "type": "float",
+        "units": "S/m",
+    },
+    "sigma_NE": {
+        "description": "The Nernst-Einstein ionic conductivity",
+        "dimensionality": "scalar",
+        "property": "ionic conductivity#Nernst-Einstein#{model}",
+        "type": "float",
+        "units": "S/m",
+    },
+    "ionicity": {
+        "description": "The ionicity, the ratio of the conductivities",
+        "dimensionality": "scalar",
+        "property": "ionicity#Ionic Conductivity#{model}",
+        "type": "float",
+        "units": "",
+    },
+    "D": {
+        "description": "The self-diffusion coefficient of each ion",
+        "dimensionality": "{species: value}",
+        "type": "json",
+        "units": "m^2/s",
+    },
+    "D, corrected": {
+        "description": (
+            "The self-diffusion coefficient of each ion with the Yeh-Hummer "
+            "correction"
+        ),
+        "dimensionality": "{species: value}",
+        "type": "json",
+        "units": "m^2/s",
+    },
+    "T": {
+        "description": "The mean temperature",
+        "dimensionality": "scalar",
+        "type": "float",
+        "units": "K",
+    },
+    "V": {
+        "description": "The mean volume",
+        "dimensionality": "scalar",
+        "type": "float",
+        "units": "Å^3",
+    },
+    "nruns": {
+        "description": "The number of MD runs analyzed",
+        "dimensionality": "scalar",
+        "type": "integer",
+    },
+    "n_frames": {
+        "description": "The number of frames analyzed",
+        "dimensionality": "scalar",
+        "type": "integer",
+    },
+}

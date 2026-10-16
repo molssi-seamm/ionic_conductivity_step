@@ -26,7 +26,7 @@ SEAMM Ionic Conductivity Plug-in
    :target: https://pypi.python.org/pypi/ionic_conductivity_step
    :alt: PyPi VERSION
 
-A SEAMM plug-in for Ionic Conductivity
+A SEAMM plug-in for the ionic conductivity of electrolytes from MD.
 
 * Free software: BSD-3-Clause
 * Documentation: https://molssi-seamm.github.io/ionic_conductivity_step/index.html
@@ -35,7 +35,10 @@ A SEAMM plug-in for Ionic Conductivity
 Features
 --------
 
-* Please edit this section!
+* The ionic conductivity of electrolytes by Einstein-Helfand (with the correlations
+  between ions) and by Nernst-Einstein, the ionicity, and each ion's self-diffusion,
+  with the Yeh-Hummer correction from a Viscosity step.
+* Runs its own MD or analyzes the MD earlier in the flowchart, from SEAMM's H5MD files.
 
 Acknowledgements
 ----------------

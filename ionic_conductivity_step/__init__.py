@@ -9,7 +9,7 @@ A SEAMM plug-in for Ionic Conductivity
 # the ionic_conductivity_step package.
 
 from .ionic_conductivity import IonicConductivity  # noqa: F401, E501
-from .ionic_conductivity_parameters import IonicConductivityParameters  # noqa: F401, E501
+from .ionic_conductivity_parameters import IonicConductivityParameters  # noqa: F401
 from .ionic_conductivity_step import IonicConductivityStep  # noqa: F401, E501
 from .tk_ionic_conductivity import TkIonicConductivity  # noqa: F401, E501
 

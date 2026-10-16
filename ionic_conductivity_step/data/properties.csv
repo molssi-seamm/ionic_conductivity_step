@@ -1,1 +1,5 @@
 Property,Type,Units,Description,URL
+ionic conductivity#Einstein-Helfand#{model},float,S/m,"The ionic conductivity from the collective displacement of the charges using {model}",https://en.wikipedia.org/wiki/Conductivity_(electrolytic)
+"ionic conductivity,stderr#Einstein-Helfand#{model}",float,S/m,"The standard error of the ionic conductivity using {model}",https://en.wikipedia.org/wiki/Conductivity_(electrolytic)
+ionic conductivity#Nernst-Einstein#{model},float,S/m,"The Nernst-Einstein ionic conductivity using {model}",https://en.wikipedia.org/wiki/Nernst%E2%80%93Einstein_equation
+ionicity#Ionic Conductivity#{model},float,,"The ratio of the Einstein-Helfand and Nernst-Einstein conductivities using {model}",https://en.wikipedia.org/wiki/Conductivity_(electrolytic)
