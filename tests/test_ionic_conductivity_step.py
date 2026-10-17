@@ -10,4 +10,7 @@ import ionic_conductivity_step  # noqa: F401
 def test_construction():
     """Just create an object and test its type."""
     result = ionic_conductivity_step.IonicConductivity()
-    assert str(type(result)) == "<class 'ionic_conductivity_step.ionic_conductivity.IonicConductivity'>"
+    assert (
+        str(type(result))
+        == "<class 'ionic_conductivity_step.ionic_conductivity.IonicConductivity'>"
+    )

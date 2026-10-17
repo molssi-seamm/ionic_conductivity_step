@@ -32,8 +32,11 @@ class IonicConductivityStep(object):
     """
 
     my_description = {
-        "description": "An interface for Ionic Conductivity",
-        "group": "Simulations",
+        "description": (
+            "The ionic conductivity of electrolytes from MD: Einstein-Helfand "
+            "and Nernst-Einstein, and the ionicity"
+        ),
+        "group": "Analysis",
         "name": "Ionic Conductivity",
     }
 

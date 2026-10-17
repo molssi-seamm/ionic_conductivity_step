@@ -5,7 +5,7 @@ Control parameters for the Ionic Conductivity step in a SEAMM flowchart
 
 import logging
 import seamm
-import pprint  # noqa: F401
+from seamm_md_analysis.step_support import run_own_md, source_parameters
 
 logger = logging.getLogger(__name__)
 
@@ -14,85 +14,84 @@ class IonicConductivityParameters(seamm.Parameters):
     """
     The control parameters for Ionic Conductivity.
 
-    You need to replace the "time" entry in dictionary below these comments with the
-    definitions of parameters to control this step. The keys are parameters for the
-    current plugin,the values are dictionaries as outlined below.
-
-    Examples
-    --------
-    ::
-
-        parameters = {
-            "time": {
-                "default": 100.0,
-                "kind": "float",
-                "default_units": "ps",
-                "enumeration": tuple(),
-                "format_string": ".1f",
-                "description": "Simulation time:",
-                "help_text": ("The time to simulate in the dynamics run.")
-            },
-        }
-
-    parameters : {str: {str: str}}
-        A dictionary containing the parameters for the current step.
-        Each key of the dictionary is a dictionary that contains the
-        the following keys:
-
-    parameters["default"] :
-        The default value of the parameter, used to reset it.
-
-    parameters["kind"] : enum()
-        Specifies the kind of a variable. One of  "integer", "float", "string",
-        "boolean", or "enum"
-
-        While the "kind" of a variable might be a numeric value, it may still have
-        enumerated custom values meaningful to the user. For instance, if the parameter
-        is a convergence criterion for an optimizer, custom values like "normal",
-        "precise", etc, might be adequate. In addition, any parameter can be set to a
-        variable of expression, indicated by having "$" as the first character in the
-        field. For example, $OPTIMIZER_CONV.
-
-    parameters["default_units"] : str
-        The default units, used for resetting the value.
-
-    parameters["enumeration"] : tuple
-        A tuple of enumerated values.
-
-    parameters["format_string"] : str
-        A format string for "pretty" output.
-
-    parameters["description"] : str
-        A short string used as a prompt in the GUI.
-
-    parameters["help_text"] : str
-        A longer string to display as help for the user.
-
-    See Also
-    --------
-    IonicConductivity, TkIonicConductivity, IonicConductivity IonicConductivityParameters, Ionic ConductivityStep
+    The MD to analyze comes either from this step's sub-flowchart, run several
+    times as independent runs, or from MD run earlier in the flowchart or in other
+    jobs (see seamm_md_analysis.step_support.source_parameters).
     """
 
     parameters = {
-        "time": {
-            "default": 100.0,
+        **source_parameters("the ionic conductivity"),
+        "nruns": {
+            "default": "5",
+            "kind": "integer",
+            "default_units": "",
+            "enumeration": tuple(),
+            "format_string": "",
+            "description": "Number of runs to average:",
+            "help_text": "The number of independent MD runs to average.",
+            "applies_when": {"md source": run_own_md},
+        },
+        "errors": {
+            "default": "continue to next run",
+            "kind": "string",
+            "default_units": "",
+            "enumeration": (
+                "continue to next run",
+                "exit the loop",
+                "stop the job",
+            ),
+            "format_string": "",
+            "description": "On errors",
+            "help_text": "What to do if a run of the MD fails.",
+            "applies_when": {"md source": run_own_md},
+        },
+        "frame interval": {
+            "default": 1.0,
             "kind": "float",
             "default_units": "ps",
             "enumeration": tuple(),
-            "format_string": ".1f",
-            "description": "Simulation time:",
-            "help_text": ("The time to simulate in the dynamics run."),
+            "format_string": ".2f",
+            "description": "Longest interval between frames:",
+            "help_text": "The positions must be sampled at least this often.",
         },
-        # # Results handling ... uncomment if needed
-        # "results": {
-        #     "default": {},
-        #     "kind": "dictionary",
-        #     "default_units": "",
-        #     "enumeration": tuple(),
-        #     "format_string": "",
-        #     "description": "results",
-        #     "help_text": "The results to save to variables or in tables.",
-        # },
+        "fit start": {
+            "default": 0.1,
+            "kind": "float",
+            "default_units": "",
+            "enumeration": tuple(),
+            "format_string": ".2f",
+            "description": "Fit from:",
+            "help_text": (
+                "Where the fit of the mean square displacements starts, as a "
+                "fraction of their length."
+            ),
+        },
+        "fit end": {
+            "default": 0.5,
+            "kind": "float",
+            "default_units": "",
+            "enumeration": tuple(),
+            "format_string": ".2f",
+            "description": "Fit to:",
+            "help_text": (
+                "Where the fit ends, as a fraction of the length: the late part has "
+                "few time origins and is noisy."
+            ),
+        },
+        "Yeh-Hummer correction": {
+            "default": "with the viscosity from a Viscosity step",
+            "kind": "enumeration",
+            "default_units": "",
+            "enumeration": ("with the viscosity from a Viscosity step", "no"),
+            "format_string": "s",
+            "description": "Yeh-Hummer correction:",
+            "help_text": (
+                "Correct the self-diffusion coefficients, and so the Nernst-Einstein "
+                "conductivity, for the size of the cell, using the viscosity from a "
+                "Viscosity step earlier in the flowchart (skipped, with a note, if "
+                "there is none)."
+            ),
+        },
     }
 
     def __init__(self, defaults={}, data=None):
