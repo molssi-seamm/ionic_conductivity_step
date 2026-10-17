@@ -5,7 +5,7 @@ Control parameters for the Ionic Conductivity step in a SEAMM flowchart
 
 import logging
 import seamm
-from seamm_md_analysis.step_support import run_own_md, source_parameters
+from seamm_md_analysis.step_support import source_parameters
 
 logger = logging.getLogger(__name__)
 
@@ -14,37 +14,12 @@ class IonicConductivityParameters(seamm.Parameters):
     """
     The control parameters for Ionic Conductivity.
 
-    The MD to analyze comes either from this step's sub-flowchart, run several
-    times as independent runs, or from MD run earlier in the flowchart or in other
-    jobs (see seamm_md_analysis.step_support.source_parameters).
+    The MD to analyze is run earlier in the flowchart -- in a Loop for independent
+    runs -- or in other jobs (see seamm_md_analysis.step_support.source_parameters).
     """
 
     parameters = {
         **source_parameters("the ionic conductivity"),
-        "nruns": {
-            "default": "5",
-            "kind": "integer",
-            "default_units": "",
-            "enumeration": tuple(),
-            "format_string": "",
-            "description": "Number of runs to average:",
-            "help_text": "The number of independent MD runs to average.",
-            "applies_when": {"md source": run_own_md},
-        },
-        "errors": {
-            "default": "continue to next run",
-            "kind": "string",
-            "default_units": "",
-            "enumeration": (
-                "continue to next run",
-                "exit the loop",
-                "stop the job",
-            ),
-            "format_string": "",
-            "description": "On errors",
-            "help_text": "What to do if a run of the MD fails.",
-            "applies_when": {"md source": run_own_md},
-        },
         "frame interval": {
             "default": 1.0,
             "kind": "float",

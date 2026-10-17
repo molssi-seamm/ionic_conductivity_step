@@ -38,7 +38,8 @@ Features
 * The ionic conductivity of electrolytes by Einstein-Helfand (with the correlations
   between ions) and by Nernst-Einstein, the ionicity, and each ion's self-diffusion,
   with the Yeh-Hummer correction from a Viscosity step.
-* Runs its own MD or analyzes the MD earlier in the flowchart, from SEAMM's H5MD files.
+* Analyzes the MD earlier in the flowchart -- the runs of a Loop of replicas -- or
+  earlier runs' H5MD files, with 95% confidence intervals and the state of the runs.
 
 Acknowledgements
 ----------------

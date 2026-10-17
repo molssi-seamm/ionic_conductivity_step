@@ -2,6 +2,8 @@
 
 """This file contains metadata describing the results from IonicConductivity"""
 
+from seamm_md_analysis.step_support import state_results
+
 metadata = {}
 
 """Description of the computational models for IonicConductivity.
@@ -146,21 +148,54 @@ metadata["results"] = {
         "units": "S/m",
     },
     "sigma_NE": {
-        "description": "The Nernst-Einstein ionic conductivity",
+        "description": (
+            "The Nernst-Einstein ionic conductivity, from the self-diffusion "
+            "coefficients in the cell"
+        ),
         "dimensionality": "scalar",
         "property": "ionic conductivity#Nernst-Einstein#{model}",
         "type": "float",
         "units": "S/m",
     },
+    "sigma_NE,stderr": {
+        "description": "The standard error of the Nernst-Einstein ionic conductivity",
+        "dimensionality": "scalar",
+        "type": "float",
+        "units": "S/m",
+    },
+    "sigma_NE, corrected": {
+        "description": (
+            "The Nernst-Einstein ionic conductivity from the self-diffusion "
+            "coefficients with the Yeh-Hummer correction"
+        ),
+        "dimensionality": "scalar",
+        "type": "float",
+        "units": "S/m",
+    },
     "ionicity": {
-        "description": "The ionicity, the ratio of the conductivities",
+        "description": (
+            "The ionicity, the ratio of the Einstein-Helfand and Nernst-Einstein "
+            "conductivities (the corrected one if there is one)"
+        ),
         "dimensionality": "scalar",
         "property": "ionicity#Ionic Conductivity#{model}",
         "type": "float",
         "units": "",
     },
+    "ionicity,stderr": {
+        "description": "The standard error of the ionicity",
+        "dimensionality": "scalar",
+        "type": "float",
+        "units": "",
+    },
     "D": {
-        "description": "The self-diffusion coefficient of each ion",
+        "description": "The self-diffusion coefficient of each ion in the cell",
+        "dimensionality": "{species: value}",
+        "type": "json",
+        "units": "m^2/s",
+    },
+    "D,stderr": {
+        "description": "The standard error of the self-diffusion coefficients",
         "dimensionality": "{species: value}",
         "type": "json",
         "units": "m^2/s",
@@ -174,18 +209,7 @@ metadata["results"] = {
         "type": "json",
         "units": "m^2/s",
     },
-    "T": {
-        "description": "The mean temperature",
-        "dimensionality": "scalar",
-        "type": "float",
-        "units": "K",
-    },
-    "V": {
-        "description": "The mean volume",
-        "dimensionality": "scalar",
-        "type": "float",
-        "units": "Å^3",
-    },
+    **state_results,
     "nruns": {
         "description": "The number of MD runs analyzed",
         "dimensionality": "scalar",
