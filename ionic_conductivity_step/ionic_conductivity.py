@@ -5,34 +5,46 @@ by Einstein-Helfand, from the collective displacement of the ions' charges,
 σ = lim ⟨‖P(t) − P(0)‖²⟩ / (6 V kB t) with P = Σ qᵢ rᵢ over the ions; by
 Nernst-Einstein, from the ions' self-diffusion; and their ratio, the ionicity.
 The analysis is in :mod:`seamm_md_analysis.electric`.
+
+The MD is run before this step -- in a Loop for independent runs -- or read from
+files; the step analyzes it.
 """
 
 from collections import Counter
 import importlib.resources
 import logging
 from pathlib import Path
-import sys
-import traceback
 import warnings
 
 import numpy as np
-from seamm_md_analysis import open_md
+from seamm_md_analysis import (
+    Estimate,
+    component_check,
+    isotropy,
+    open_md,
+)
 from seamm_md_analysis.electric import (
     cell_dipole,
     classify_molecules,
-    collective_msd,
     conductivity_from_msd,
     nernst_einstein,
 )
-from seamm_md_analysis.transport import fit_slope, msd_by_species, yeh_hummer_correction
+from seamm_md_analysis.transport import (
+    fit_slope,
+    msd_by_species,
+    squared_displacement_sums,
+    yeh_hummer_correction,
+)
 from seamm_md_analysis.requirements import Need, Requirements
 from seamm_md_analysis.step_support import (
+    print_details,
     check_md_flowchart,
     preceding_viscosity,
     md_inputs,
     read_files,
-    request_sampling,
-    run_own_md,
+    report_state,
+    size_warnings,
+    state_data,
 )
 from tabulate import tabulate
 
@@ -56,6 +68,16 @@ csv_file = path / "properties.csv"
 if path.exists():
     molsystem.add_properties_from_file(csv_file)
 
+#: The fewest cation-anion pairs for a useful conductivity
+MIN_ION_PAIRS = 10
+#: The fewest frames in a block of a single run
+MIN_BLOCK_FRAMES = 20
+#: Å²/ps in m²/s
+A2_PER_PS = 1.0e-8
+#: The unit of the self-diffusion coefficients in the output, m²/s
+D_UNIT = 1.0e-9
+AXES = ("xx", "yy", "zz")
+
 
 def hill_formula(symbols):
     """The formula of a molecule in Hill order."""
@@ -68,15 +90,44 @@ def hill_formula(symbols):
     return "".join(e + (str(counts[e]) if counts[e] > 1 else "") for e in order)
 
 
+def count_ions(charges, molecules):
+    """The number of cations and anions, from the charges of the atoms.
+
+    Parameters
+    ----------
+    charges : array_like
+        The charge of each atom, e.
+    molecules : [[int]]
+        The atoms of each molecule.
+
+    Returns
+    -------
+    (int, int)
+        The numbers of cations and anions.
+    """
+    classes = classify_molecules(charges, molecules)
+    z = [int(classes["z"][m]) for m in classes["ions"]]
+    return sum(1 for q in z if q > 0), sum(1 for q in z if q < 0)
+
+
+def pairs_note(n_cations, n_anions):
+    """A warning if there are too few ion pairs for useful statistics, or None."""
+    pairs = min(n_cations, n_anions)
+    if pairs >= MIN_ION_PAIRS:
+        return None
+    return (
+        f"There are only {pairs} cation-anion pairs ({n_cations} cations, "
+        f"{n_anions} anions): the conductivity needs at least about {MIN_ION_PAIRS}, "
+        "or it and its error come out poorly. Use a larger system."
+    )
+
+
 class IonicConductivity(seamm.Node):
     """
     The non-graphical part of a Ionic Conductivity step in a flowchart.
 
     Attributes
     ----------
-    subflowchart : seamm.Flowchart
-        The MD to run, when this step runs its own MD.
-
     parameters : IonicConductivityParameters
         The control parameters for Ionic Conductivity.
     """
@@ -85,15 +136,10 @@ class IonicConductivity(seamm.Node):
         self,
         flowchart=None,
         title="Ionic Conductivity",
-        namespace="org.molssi.seamm",
         extension=None,
         logger=logger,
     ):
         logger.debug(f"Creating Ionic Conductivity {self}")
-        self.subflowchart = seamm.Flowchart(
-            parent=self, name="Ionic Conductivity", namespace=namespace
-        )
-
         super().__init__(
             flowchart=flowchart,
             title="Ionic Conductivity",
@@ -104,7 +150,6 @@ class IonicConductivity(seamm.Node):
 
         self._metadata = ionic_conductivity_step.metadata
         self.parameters = ionic_conductivity_step.IonicConductivityParameters()
-        self._file_handler = None
         self._reset()
 
     @property
@@ -126,8 +171,6 @@ class IonicConductivity(seamm.Node):
         parser_name = "ionic-conductivity-step"
         parser = seamm_util.getParser()
 
-        self.subflowchart._parser = self.flowchart._parser
-
         parser_exists = parser.exists(parser_name)
         super().create_parser(name=parser_name)
         if not parser_exists:
@@ -137,12 +180,6 @@ class IonicConductivity(seamm.Node):
                 action="store_true",
                 help="whether to write out html files for graphs, etc.",
             )
-
-        self.subflowchart.reset_visited()
-        node = self.subflowchart.get_node("1").next()
-        while node is not None:
-            node = node.create_parser()
-
         return self.next()
 
     def description_text(self, P=None, short=False):
@@ -155,25 +192,12 @@ class IonicConductivity(seamm.Node):
             "the ionicity"
         )
 
-        source = P.get("md source", run_own_md)
-        if source == run_own_md:
-            text = f"Calculate {what}, from {P['nruns']} runs of the MD below.\n\n"
+        source = P["md source"]
+        text = f"Calculate {what}, from "
+        if source == read_files:
+            text += f"the MD in {P['md files']}."
         else:
-            text = f"Calculate {what}, from "
-            if source == read_files:
-                text += f"the MD in {P['md files']}.\n\n"
-            else:
-                text += f"{source} earlier in the flowchart.\n\n"
-            short = True
-
-        if not short:
-            self.subflowchart.root_directory = self.flowchart.root_directory
-            node = self.subflowchart.get_node("1").next()
-            while node is not None:
-                text += __(node.description_text()).__str__()
-                text += "\n"
-                node = node.next()
-
+            text += f"{source} earlier in the flowchart."
         return self.header + "\n" + __(text, indent=4 * " ").__str__()
 
     def run(self):
@@ -184,18 +208,9 @@ class IonicConductivity(seamm.Node):
         P = self.parameters.current_values_to_dict(
             context=seamm.flowchart_variables._data
         )
-        printer.important(__(self.description_text(P, short=True), indent=self.indent))
+        printer.important(__(self.description_text(P), indent=self.indent))
 
         _, configuration = self.get_system_configuration()
-        if (
-            P["md source"] == run_own_md
-            and configuration is not None
-            and configuration.periodicity != 3
-        ):
-            raise RuntimeError(
-                "The Ionic Conductivity step needs a periodic system: a "
-                "conductivity is a property of the bulk."
-            )
 
         self.references.cite(
             raw=self._bibliography["Hansen2013"],
@@ -205,132 +220,28 @@ class IonicConductivity(seamm.Node):
             note="The Einstein-Helfand conductivity and the Nernst-Einstein relation.",
         )
 
-        handlers = self._quiet_handlers()
-        try:
-            if P["md source"] == run_own_md:
-                self._run_own_md(P)
-            else:
-                self.paths = md_inputs(self, P, name="all/position")
-                printer.job(
-                    __(
-                        f"Analyzing {len(self.paths)} MD run"
-                        f"{'s' if len(self.paths) > 1 else ''}: "
-                        + ", ".join(str(p) for p in self.paths),
-                        indent=self.indent + 4 * " ",
-                    )
-                )
-        finally:
-            self._restore_handlers(handlers)
-
+        self.paths = md_inputs(self, P, name="all/position")
+        printer.job(
+            __(
+                f"Analyzing {len(self.paths)} MD run"
+                f"{'s' if len(self.paths) > 1 else ''}: "
+                + ", ".join(str(p) for p in self.paths),
+                indent=self.indent + 4 * " ",
+            )
+        )
         if len(self.paths) == 0:
             raise RuntimeError("No MD run finished, so there is nothing to analyze.")
 
         self.analyze(P=P, configuration=configuration)
         return next_node
 
-    def _quiet_handlers(self):
-        """Send only job-level output to job.out and the screen while MD runs."""
-        result = []
-        for handler in job.handlers:
-            if (
-                isinstance(handler, logging.FileHandler)
-                and "job.out" in handler.baseFilename
-            ) or isinstance(handler, logging.StreamHandler):
-                result.append((handler, handler.level))
-                handler.setLevel(printing.JOB)
-        return result
-
-    @staticmethod
-    def _restore_handlers(handlers):
-        for handler, level in handlers:
-            handler.setLevel(level)
-
-    def _run_own_md(self, P):
-        """Run the MD in the sub-flowchart several times, keeping each run's file."""
-        changes, missing = request_sampling(self.subflowchart, self.md_requirements(P))
-        for change in changes:
-            printer.job(__(f"Note: {change}.", indent=self.indent + 4 * " "))
-        if len(missing) > 0:
-            raise RuntimeError(
-                "The MD in the sub-flowchart cannot provide what is needed: "
-                + " ".join(missing)
-            )
-
-        first_node = self.subflowchart.get_node("1").next()
-        if first_node is None:
-            raise RuntimeError(
-                "The sub-flowchart of the Ionic Conductivity step is empty."
-            )
-        node = first_node
-        while node is not None:
-            node.all_options = self.all_options
-            node = node.next()
-        self.subflowchart.executor = self.flowchart.executor
-
-        nruns = P["nruns"]
-        fmt_run = f"0{len(str(nruns))}"
-        for run in range(1, nruns + 1):
-            run_dir = Path(self.directory) / f"run_{run:{fmt_run}}"
-            run_dir.mkdir(parents=True, exist_ok=True)
-
-            if self._file_handler is not None:
-                self._file_handler.close()
-                job.removeHandler(self._file_handler)
-            path = run_dir / "Run.out"
-            path.unlink(missing_ok=True)
-            self._file_handler = logging.FileHandler(path)
-            self._file_handler.setLevel(printing.NORMAL)
-            formatter = logging.Formatter(fmt="{message:s}", style="{")
-            self._file_handler.setFormatter(formatter)
-            job.addHandler(self._file_handler)
-
-            self.flowchart.reset_visited()
-            self.set_subids((*self._id, f"run_{run:{fmt_run}}"))
-
-            node = first_node
-            try:
-                while node is not None:
-                    node = node.run()
-            except DeprecationWarning as e:
-                printer.normal("\nDeprecation warning: " + str(e))
-                traceback.print_exc(file=sys.stderr)
-                traceback.print_exc(file=sys.stdout)
-            except Exception as e:
-                printer.job(f"Caught exception in run {run}: {str(e)}")
-                with open(run_dir / "stderr.out", "a") as fd:
-                    traceback.print_exc(file=fd)
-                if "continue" in P["errors"]:
-                    continue
-                elif "exit" in P["errors"]:
-                    break
-                else:
-                    raise
-            else:
-                self.paths.append(self._read_run(run, run_dir))
-
-        if self._file_handler is not None:
-            self._file_handler.close()
-            job.removeHandler(self._file_handler)
-            self._file_handler = None
-
-    def _read_run(self, run, run_dir):
-        """The md.h5md of one run of the sub-flowchart with the positions."""
-        paths = []
-        for path in sorted(run_dir.glob("**/md.h5md")):
-            with open_md(path) as md:
-                if md.has_particles("position"):
-                    paths.append(path)
-        if len(paths) == 0:
-            raise RuntimeError(f"There are no positions for run {run} in {run_dir}.")
-        return paths[-1]
-
     # ------------------------------------------------------------------
     # The analysis
     # ------------------------------------------------------------------
     def _read(self, path, configuration, ion_atoms, ion_charges, ions, masses):
-        """The collective charge displacement and the centres of mass of the ions
-        in each frame, the interval between frames (ps), and the mean volume (Å³)
-        and temperature (K) of one run."""
+        """One run: the collective charge displacement and the centres of mass of
+        the ions in each frame, the interval between frames (ps), the mean volume
+        (Å³) and temperature (K), and whether the run is isotropic."""
         with open_md(path) as md:
             if not md.periodic:
                 raise RuntimeError(f"The MD in {path} is not periodic.")
@@ -344,6 +255,7 @@ class IonicConductivity(seamm.Node):
                 else None
             )
             T = float(md.observable("temperature", units="K").values.mean())
+            isotropic = isotropy(md)
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 u = md.universe(configuration)
@@ -356,14 +268,70 @@ class IonicConductivity(seamm.Node):
                 P.append(cell_dipole(x, ion_atoms, ion_charges))
                 com.append([w @ x[m] for m, w in zip(ions, weights)])
                 V.append(ts.volume)
-        return np.array(P), np.array(com), dt, float(np.mean(V)), T
+        return {
+            "P": np.array(P),
+            "com": np.array(com),
+            "dt": dt,
+            "V": float(np.mean(V)),
+            "T": T,
+            "isotropic": isotropic,
+        }
+
+    @staticmethod
+    def _sample(Pc, com, dt, V, T, groups, start, end):
+        """σ and the self-diffusion coefficients, by component, of one run or
+        block, and the MSDs for the graph.
+
+        Returns
+        -------
+        dict
+            ``sigma``: σ_xx, σ_yy, σ_zz (S/m); ``D``: (n_species, 3), m²/s;
+            ``msd``: the collective MSD (e² Å²) and ``species msd`` the MSD of each
+            species (Å²), summed over x, y and z; ``V``, ``T``.
+        """
+        n = len(Pc)
+        ts = (np.arange(n) * dt).tolist()
+        msd = squared_displacement_sums(Pc) / (n - np.arange(n))[:, None]
+        # σ_aa = ⟨Δ P_a²⟩ / (2 V kB t), three times the 3D formula for one axis
+        sigma = np.array(
+            [
+                3 * conductivity_from_msd(msd[:, a], dt, V, T, start, end)["sigma"]
+                for a in range(3)
+            ]
+        )
+        species_msd, _ = msd_by_species(com, groups)
+        D = np.array(
+            [
+                [
+                    fit_slope(m[:, a], ts, start=start, end=end).slope / 2 * A2_PER_PS
+                    for a in range(3)
+                ]
+                for m in species_msd
+            ]
+        )
+        return {
+            "sigma": sigma,
+            "D": D,
+            "msd": msd.sum(axis=1),
+            "species msd": [m[:, 3] for m in species_msd],
+            "V": V,
+            "T": T,
+        }
+
+    def _ions(self, configuration, charges):
+        """The ions in the structure, from the charges of the MD."""
+        molecules = configuration.find_molecules(as_indices=True)
+        symbols = configuration.atoms.symbols
+        classes = classify_molecules(charges, molecules)
+        ions = [np.array(molecules[m]) for m in classes["ions"]]
+        names = [hill_formula([symbols[i] for i in m]) for m in ions]
+        z = {name: int(classes["z"][m]) for name, m in zip(names, classes["ions"])}
+        return ions, names, z
 
     def analyze(self, indent="", P=None, configuration=None, **kwargs):
         """Analyze, print, plot and store the ionic conductivity."""
         if configuration is None:
             raise RuntimeError("There is no structure to analyze.")
-        molecules = configuration.find_molecules(as_indices=True)
-        symbols = configuration.atoms.symbols
 
         with open_md(self.paths[0]) as md:
             charges = md.charges("all")
@@ -376,17 +344,25 @@ class IonicConductivity(seamm.Node):
         charges = np.asarray(charges, dtype=float)
         masses = np.asarray(masses, dtype=float)
 
-        classes = classify_molecules(charges, molecules)
-        if len(classes["ions"]) == 0:
-            raise RuntimeError(f"'{self.title}': there are no ions.")
-        ions = [np.array(molecules[m]) for m in classes["ions"]]
-        names = [hill_formula([symbols[i] for i in m]) for m in ions]
-        z = {name: int(classes["z"][m]) for name, m in zip(names, classes["ions"])}
+        ions, names, z = self._ions(configuration, charges)
+        if len(ions) == 0:
+            printer.normal(
+                __(
+                    "There are no ions, so there is no ionic conductivity to "
+                    "calculate: skipped.",
+                    indent=self.indent + 4 * " ",
+                )
+            )
+            printer.normal("")
+            return
+
         species = list(dict.fromkeys(names))
         groups = [[i for i, n in enumerate(names) if n == s] for s in species]
         counts = {s: len(g) for s, g in zip(species, groups)}
         ion_atoms = np.concatenate(ions)
         ion_charges = charges[ion_atoms]
+        n_cations = sum(counts[s] for s in species if z[s] > 0)
+        n_anions = sum(counts[s] for s in species if z[s] < 0)
         printer.normal(
             __(
                 "The ions: "
@@ -402,78 +378,45 @@ class IonicConductivity(seamm.Node):
         ]
         nruns = len(runs)
         start, end = P["fit start"], P["fit end"]
-        T = float(np.mean([r[4] for r in runs]))
-        V = float(np.mean([r[3] for r in runs]))
-        dt = runs[0][2] or 1.0
-        n_frames = sum(len(r[0]) for r in runs)
+        dt = runs[0]["dt"] or 1.0
+        n_frames = sum(len(r["P"]) for r in runs)
+        isotropic, why = runs[0]["isotropic"]
 
-        # Several runs: average the curves and take the spread of the runs. One
-        # run: blocks of it for the error.
+        # The independent samples: the runs, cut to the same length, or blocks of a
+        # single run. With one run, the values are from the whole run and only the
+        # errors from the blocks.
+        whole = None
         if nruns > 1:
-            pieces = [(r[0], r[1]) for r in runs]
-        else:
-            n_blocks = P["number of blocks"] if P["md source"] != run_own_md else 1
-            n_blocks = max(1, min(int(n_blocks), len(runs[0][0]) // 20))
-            pieces = list(
-                zip(
-                    np.array_split(runs[0][0], n_blocks),
-                    np.array_split(runs[0][1], n_blocks),
+            source = "runs"
+            n = min(len(r["P"]) for r in runs)
+            samples = [
+                self._sample(
+                    r["P"][:n], r["com"][:n], dt, r["V"], r["T"], groups, start, end
                 )
-            )
-        n = min(len(p[0]) for p in pieces)
-        ts = np.arange(n) * dt
-        msds = [collective_msd(Pc[:n]) for Pc, _ in pieces]
-        sigmas = [
-            conductivity_from_msd(m, dt, V, T, start=start, end=end)["sigma"]
-            for m in msds
-        ]
-        D_pieces = []
-        species_msds = []
-        for _, com in pieces:
-            msd, _ = msd_by_species(com[:n], groups)
-            species_msds.append(msd)
-            D_pieces.append(
-                [
-                    fit_slope(m[:, 3], ts.tolist(), start=start, end=end).slope
-                    / 6
-                    * 1.0e-8
-                    for m in msd
-                ]
-            )
-
-        # The value from the whole run(s); the error from the pieces
-        if nruns > 1:
-            mean_msd = np.mean(msds, axis=0)
-            fit = conductivity_from_msd(mean_msd, dt, V, T, start=start, end=end)
-            plot_msd, plot_ts = mean_msd, ts
+                for r in runs
+            ]
         else:
-            full = collective_msd(runs[0][0])
-            full_ts = np.arange(full.size) * dt
-            fit = conductivity_from_msd(full, dt, V, T, start=start, end=end)
-            plot_msd, plot_ts = full, full_ts
-        sigma = fit["sigma"]
-        stderr = (
-            float(np.std(sigmas, ddof=1) / np.sqrt(len(sigmas)))
-            if len(sigmas) > 1
-            else None
-        )
-        D = dict(zip(species, np.mean(D_pieces, axis=0).tolist()))
-        D_err = (
-            dict(
-                zip(
-                    species,
-                    (
-                        np.std(D_pieces, axis=0, ddof=1) / np.sqrt(len(D_pieces))
-                    ).tolist(),
-                )
+            source = "blocks"
+            run = runs[0]
+            n_blocks = max(
+                1, min(int(P["number of blocks"]), len(run["P"]) // MIN_BLOCK_FRAMES)
             )
-            if len(D_pieces) > 1
-            else None
-        )
+            samples = [
+                self._sample(Pc, com, dt, run["V"], run["T"], groups, start, end)
+                for Pc, com in zip(
+                    np.array_split(run["P"], n_blocks),
+                    np.array_split(run["com"], n_blocks),
+                )
+            ]
+            whole = self._sample(
+                run["P"], run["com"], dt, run["V"], run["T"], groups, start, end
+            )
+            if n_blocks == 1:
+                samples = [whole]
 
-        # The Yeh-Hummer correction of the self-diffusion coefficients
+        # The viscosity for the Yeh-Hummer correction, if any
         notes = []
-        D_corrected = None
+        record = None
         if P["Yeh-Hummer correction"] != "no":
             record = preceding_viscosity(self)
             if record is None:
@@ -481,40 +424,118 @@ class IonicConductivity(seamm.Node):
                     "The Yeh-Hummer correction is skipped because no Viscosity step "
                     "ran before this one."
                 )
-            else:
-                L = V ** (1 / 3) * 1.0e-10
-                correction = yeh_hummer_correction(T, L, record["value"])
-                D_corrected = {s: d + correction for s, d in D.items()}
-                notes.append(
-                    "The self-diffusion coefficients are corrected for the size of "
-                    f"the cell (Yeh-Hummer, +{correction * 1e9:.3g}e-9 m^2/s) with the "
-                    f"viscosity from step {record['id']} ({record['step']})."
+
+        def derived(s):
+            """The isotropic σ and D, σ_NE and the ionicity of a run or block."""
+            result = {"sigma": float(s["sigma"].mean())}
+            D = {sp: float(d.mean()) for sp, d in zip(species, s["D"])}
+            result["D"] = D
+            result["sigma_NE"] = nernst_einstein(D, counts, z, s["V"], s["T"])
+            used = result["sigma_NE"]
+            if record is not None:
+                L = s["V"] ** (1 / 3) * 1.0e-10
+                result["dD"] = yeh_hummer_correction(s["T"], L, record["value"])
+                result["D, corrected"] = {sp: d + result["dD"] for sp, d in D.items()}
+                result["sigma_NE, corrected"] = nernst_einstein(
+                    result["D, corrected"], counts, z, s["V"], s["T"]
                 )
-        sigma_ne = nernst_einstein(D_corrected or D, counts, z, V, T)
-        ionicity = sigma / sigma_ne if sigma_ne > 0 else None
+                used = result["sigma_NE, corrected"]
+            result["ionicity"] = result["sigma"] / used if used > 0 else float("nan")
+            return result
 
-        table = {"Property": [], "Value": [], "±": [], "Units": []}
+        values = [derived(s) for s in samples]
+        best = derived(whole) if whole is not None else None
 
-        def row(name, value, err, units, fmt=".4g"):
-            table["Property"].append(name)
-            table["Value"].append("" if value is None else f"{value:{fmt}}")
-            table["±"].append("" if err is None else f"{err:.2g}")
+        def estimate(get, scale=1.0):
+            """The estimate over the samples; with one run, the value of the whole
+            run and the error from its blocks."""
+            if len(values) < 2:
+                result = Estimate(get(values[0], samples[0]) * scale, source=source)
+            else:
+                result = Estimate.from_samples(
+                    [get(v, s) * scale for v, s in zip(values, samples)], source=source
+                )
+            if best is not None:
+                result.value = get(best, whole) * scale
+            return result
+
+        sigma = estimate(lambda v, s: v["sigma"])
+        sigma_ne = estimate(lambda v, s: v["sigma_NE"])
+        ionicity = estimate(lambda v, s: v["ionicity"])
+        D = {sp: estimate(lambda v, s, sp=sp: v["D"][sp], 1 / D_UNIT) for sp in species}
+        if record is not None:
+            sigma_ne_c = estimate(lambda v, s: v["sigma_NE, corrected"])
+            D_c = {
+                sp: estimate(lambda v, s, sp=sp: v["D, corrected"][sp], 1 / D_UNIT)
+                for sp in species
+            }
+            dD = best["dD"] if best is not None else np.mean([v["dD"] for v in values])
+
+        sigma_components = np.array([s["sigma"] for s in samples])
+        D_components = {
+            sp: np.array([s["D"][i] for s in samples]) / D_UNIT
+            for i, sp in enumerate(species)
+        }
+
+        # The table
+        D_units = "10⁻⁹ m²/s"
+        table = {"Property": [], "Value": [], "± (95%)": [], "Units": []}
+
+        def row(label, value, units=""):
+            if isinstance(value, Estimate):
+                v, e = value.formatted()
+            else:
+                v, e = ("" if value is None else f"{value:.4g}"), ""
+            table["Property"].append(label)
+            table["Value"].append(v)
+            table["± (95%)"].append(e)
             table["Units"].append(units)
 
-        row("σ (Einstein-Helfand)", sigma, stderr, "S/m")
-        row("σ (Nernst-Einstein)", sigma_ne, None, "S/m")
-        row("Ionicity σ/σ_NE", ionicity, None, "", fmt=".3f")
-        for s in species:
-            row(
-                f"D({s})",
-                D[s] * 1e9,
-                None if D_err is None else D_err[s] * 1e9,
-                "1e-9 m^2/s",
-            )
-            if D_corrected is not None:
-                row(f"D({s}), corrected", D_corrected[s] * 1e9, None, "1e-9 m^2/s")
+        def component(values, i, whole_value=None):
+            if len(values) < 2:
+                return float(values[0, i] if whole_value is None else whole_value)
+            result = Estimate.from_samples(values[:, i], source=source)
+            if whole_value is not None:
+                result.value = float(whole_value)
+            return result
+
+        row("σ (Einstein-Helfand)", sigma, "S/m")
+        if not isotropic:
+            for i, axis in enumerate(AXES):
+                row(
+                    f"σ_{axis}",
+                    component(
+                        sigma_components,
+                        i,
+                        None if whole is None else whole["sigma"][i],
+                    ),
+                    "S/m",
+                )
+        row("σ_NE (Nernst-Einstein), in the box", sigma_ne, "S/m")
+        if record is not None:
+            row("σ_NE (Nernst-Einstein), corrected", sigma_ne_c, "S/m")
+        row("Ionicity σ/σ_NE", ionicity)
+        for i, sp in enumerate(species):
+            row(f"D({sp}), in the box", D[sp], D_units)
+            if not isotropic:
+                for j, axis in enumerate(AXES):
+                    row(
+                        f"D({sp})_{axis}",
+                        component(
+                            D_components[sp],
+                            j,
+                            None if whole is None else whole["D"][i, j] / D_UNIT,
+                        ),
+                        D_units,
+                    )
+            if record is not None:
+                row(f"D({sp}), corrected", D_c[sp], D_units)
         text = tabulate(
-            table, headers="keys", tablefmt="simple_outline", disable_numparse=True
+            table,
+            headers="keys",
+            tablefmt="rounded_outline",
+            disable_numparse=True,
+            colalign=("left", "decimal", "decimal", "left"),
         )
         length = len(text.splitlines()[0])
         printer.normal(
@@ -525,49 +546,141 @@ class IonicConductivity(seamm.Node):
                 dedent=False,
             )
         )
-        how = (
-            f"the standard error over the {nruns} runs"
-            if nruns > 1
-            else (
-                f"from {len(pieces)} blocks of the run"
-                if len(pieces) > 1
-                else "no error estimate: use several runs or blocks"
-            )
-        )
-        printer.normal(
-            __(
-                f"From {n_frames} frames of {nruns} run{'s' if nruns > 1 else ''}, "
-                f"every {dt:.3g} ps; the MSDs are fitted from {start:.0%} to {end:.0%} "
-                f"of their length; the error is {how}. The collective displacement "
-                "of the charges is noisy: long runs, or several, are needed.",
-                indent=8 * " ",
-            )
-        )
-        for note in notes:
-            printer.normal(__(note, indent=8 * " "))
-        printer.normal("")
 
-        self._plot(plot_ts, plot_msd, fit, ts, species, species_msds)
+        # What the table means
+        lines = [
+            f"From {n_frames} frames of {nruns} run{'s' if nruns > 1 else ''}, every "
+            f"{dt:.3g} ps, for {len(ions)} ions; the mean square displacements are "
+            f"fitted from {start:.0%} to {end:.0%} of their length. "
+            + sigma.describe_error()
+        ]
+        if isotropic:
+            check = component_check(sigma_components, names=["σ_xx", "σ_yy", "σ_zz"])
+            lines.append(
+                "σ and D are the averages of their x, y and z components. "
+                + check.text.replace("the components", "the components of σ", 1)
+            )
+            for sp in species:
+                check = component_check(
+                    D_components[sp], names=[f"D({sp})_{a}" for a in AXES]
+                )
+                lines.append(
+                    check.text.replace(
+                        "the components", f"the components of D({sp})", 1
+                    )
+                )
+        else:
+            lines.append(
+                f"The run is not treated as isotropic ({why}), so the diagonal "
+                "components are given; σ and D are the averages of their components."
+            )
+        lines.append(
+            "The collective displacement of the charges is noisy: long runs, or "
+            "several, are needed."
+        )
+        note = pairs_note(n_cations, n_anions)
+        if note is not None:
+            notes.append(note)
+        if record is not None:
+            eta = record["value"] * 1000
+            eta_text = f"{eta:.4g}"
+            if record.get("stderr") is not None:
+                eta_text += f" ± {record['stderr'] * 1000:.2g} (standard error)"
+            where = f"step {record['id']} ({record['step']})"
+            if record.get("method"):
+                where += f", {record['method']}"
+            notes.append(
+                "The self-diffusion coefficients are corrected for the size of the "
+                f"cell (Yeh-Hummer): ΔD = {dD / D_UNIT:.3g} × {D_units}, with the "
+                f"viscosity η = {eta_text} mPa·s from {where}. σ_NE, corrected, is "
+                "from the corrected coefficients, and the ionicity uses it. The "
+                "errors of the corrected values do not include that of the viscosity."
+            )
+            T_eta = record.get("T")
+            T_run = float(np.mean([r["T"] for r in runs]))
+            if T_eta is not None and abs(T_eta - T_run) > 2.0:
+                notes.append(
+                    f"The viscosity is for {T_eta:.1f} K but the MD here is at "
+                    f"{T_run:.1f} K, so the correction is approximate."
+                )
+            if not isotropic:
+                notes.append(
+                    "The Yeh-Hummer correction is for a cubic cell, so it is "
+                    "approximate here."
+                )
+        for line in lines + notes:
+            printer.normal(__(line, indent=8 * " "))
+        printer.normal("")
+        self._print_samples(samples, values, species, source)
+
+        state = report_state(self, printer, self.paths)
+
+        # The graph: the whole run, or the average of the runs
+        if whole is not None:
+            plot_msd = whole["msd"]
+            plot_species = whole["species msd"]
+        else:
+            plot_msd = np.mean([s["msd"] for s in samples], axis=0)
+            plot_species = np.mean([s["species msd"] for s in samples], axis=0)
+        plot_ts = np.arange(len(plot_msd)) * dt
+        V = float(np.mean([r["V"] for r in runs]))
+        T = float(np.mean([r["T"] for r in runs]))
+        fit = conductivity_from_msd(plot_msd, dt, V, T, start=start, end=end)
+        self._plot(plot_ts, plot_msd, fit, species, plot_species)
 
         self.model = self._find_model()
         data = {
-            "sigma": sigma,
-            "sigma_NE": sigma_ne,
-            "D": D,
-            "T": T,
-            "V": V,
+            "sigma": sigma.value,
+            "sigma_NE": sigma_ne.value,
+            "D": {sp: D[sp].value * D_UNIT for sp in species},
             "nruns": nruns,
             "n_frames": n_frames,
         }
-        if stderr is not None:
-            data["sigma,stderr"] = stderr
-        if ionicity is not None:
-            data["ionicity"] = ionicity
-        if D_corrected is not None:
-            data["D, corrected"] = D_corrected
+        if sigma.stderr is not None:
+            data["sigma,stderr"] = sigma.stderr
+        if sigma_ne.stderr is not None:
+            data["sigma_NE,stderr"] = sigma_ne.stderr
+        if np.isfinite(ionicity.value):
+            data["ionicity"] = ionicity.value
+            if ionicity.stderr is not None:
+                data["ionicity,stderr"] = ionicity.stderr
+        if all(D[sp].stderr is not None for sp in species):
+            data["D,stderr"] = {sp: D[sp].stderr * D_UNIT for sp in species}
+        if record is not None:
+            data["D, corrected"] = {sp: D_c[sp].value * D_UNIT for sp in species}
+            data["sigma_NE, corrected"] = sigma_ne_c.value
+        if state is not None:
+            data.update(state_data(state))
         self.store_results(configuration=configuration, data=data)
 
-    def _plot(self, ts, msd, fit, species_ts, species, species_msds):
+    def _print_samples(self, samples, values, species, source):
+        """The values of each run or block, in the detailed output."""
+        what = "Run" if source == "runs" else "Block"
+        table = {what: [], "σ": [], "σ_xx": [], "σ_yy": [], "σ_zz": []}
+        for sp in species:
+            table[f"D({sp})"] = []
+        for i, (s, v) in enumerate(zip(samples, values), start=1):
+            table[what].append(i)
+            table["σ"].append(f"{v['sigma']:.3f}")
+            for axis, value in zip(AXES, s["sigma"]):
+                table[f"σ_{axis}"].append(f"{value:.3f}")
+            for sp in species:
+                table[f"D({sp})"].append(f"{v['D'][sp] / D_UNIT:.3f}")
+        text = tabulate(
+            table,
+            headers="keys",
+            tablefmt="rounded_outline",
+            disable_numparse=True,
+            colalign=("center",) + ("decimal",) * (len(table) - 1),
+        )
+        length = len(text.splitlines()[0])
+        title = f"By {what.lower()}: σ in S/m, D in 10⁻⁹ m²/s".center(length)
+        print_details(
+            printer,
+            str(__("\n" + title + "\n" + text + "\n", indent=8 * " ", wrap=False)),
+        )
+
+    def _plot(self, ts, msd, fit, species, species_msds):
         """The collective MSD of the charges with its fit, and the ions' MSDs."""
         figure = self.create_figure(
             module_path=("seamm",),
@@ -606,13 +719,12 @@ class IonicConductivity(seamm.Node):
         x2 = plot2.add_axis("x", label="Time (ps)")
         y2 = plot2.add_axis("y", label="MSD (Å^2)", anchor=x2)
         x2.anchor = y2
-        mean = np.mean([[m[:, 3] for m in run] for run in species_msds], axis=0)
-        for name, m in zip(species, mean):
+        for name, m in zip(species, species_msds):
             plot2.add_trace(
                 x_axis=x2,
                 y_axis=y2,
                 name=name,
-                x=list(species_ts),
+                x=list(ts),
                 xlabel="t",
                 xunits="ps",
                 y=list(m),
@@ -641,7 +753,7 @@ class IonicConductivity(seamm.Node):
     # ------------------------------------------------------------------
     def md_requirements(self, P=None):
         """What the analysis needs from the MD: positions every ps or so, in a
-        periodic cell."""
+        periodic cell, from dynamics that are not perturbed."""
         interval = (
             P["frame interval"] if P is not None else self._static("frame interval")
         )
@@ -658,6 +770,7 @@ class IonicConductivity(seamm.Node):
                 )
             ],
             periodic=True,
+            dynamics=True,
         )
 
     def _static(self, key):
@@ -668,36 +781,59 @@ class IonicConductivity(seamm.Node):
         return parameter.get()
 
     def check_flowchart(self, preceding):
-        """Check, before the job runs, that the MD will sample what is needed."""
+        """Check, before the job runs, that the MD will sample what is needed and is
+        set up for the analysis."""
         source = self._static("md source")
         if source is None:
             return []
         return check_md_flowchart(self, preceding, self.md_requirements(), source)
 
+    def _structure_charges(self, configuration):
+        """The charges of the atoms known before the MD runs, or None.
+
+        These are the forcefield's charges, once the atoms are typed (the column
+        ``charges_<forcefield>``), or else the formal charges.
+        """
+        atoms = configuration.atoms
+        keys = [k for k in atoms.keys() if k.startswith("charges_")]
+        if len(keys) > 0:
+            key = keys[0]
+            try:
+                ff = self.get_variable("_forcefield")
+                if f"charges_{ff.current_forcefield}" in keys:
+                    key = f"charges_{ff.current_forcefield}"
+            except Exception:
+                pass
+            return np.array(atoms.get_column_data(key), dtype=float)
+        if "formal_charge" in atoms:
+            return np.array(atoms.get_column_data("formal_charge"), dtype=float)
+        return None
+
     def check_configuration(self, configuration):
-        """Called by an MD step before it runs MD that this step will analyze."""
-        if self._static("md source") == run_own_md:
-            return
+        """Called by an MD step before it runs MD that this step will analyze.
+
+        Returns
+        -------
+        [str]
+            Warnings about the structure, e.g. that it is small or has too few ions.
+        """
         if configuration.periodicity != 3:
             raise RuntimeError(
                 f"'{self.title}' will analyze the MD, but the system is not "
                 "periodic: a conductivity is a property of the bulk."
             )
-
-    def set_id(self, node_id=()):
-        """Sequentially number the subnodes"""
-        if self.visited:
-            return None
-        else:
-            self.visited = True
-            self._id = node_id
-            self.set_subids(self._id)
-            return self.next()
-
-    def set_subids(self, node_id=()):
-        """Set the ids of the nodes in the subflowchart"""
-        node = self.subflowchart.get_node("1").next()
-        n = 1
-        while node is not None:
-            node = node.set_id((*node_id, str(n)))
-            n += 1
+        result = size_warnings(configuration)
+        charges = self._structure_charges(configuration)
+        if charges is not None:
+            molecules = configuration.find_molecules(as_indices=True)
+            n_cations, n_anions = count_ions(charges, molecules)
+            if n_cations + n_anions == 0:
+                result.append(
+                    "There are no ions, so there will be no ionic conductivity to "
+                    "calculate."
+                )
+            else:
+                note = pairs_note(n_cations, n_anions)
+                if note is not None:
+                    result.append(note)
+        return [f"'{self.title}': {w}" for w in result]
