@@ -18,6 +18,9 @@ class IonicConductivityParameters(seamm.Parameters):
     runs -- or in other jobs (see seamm_md_analysis.step_support.source_parameters).
     """
 
+    # Dropped with the own-MD route (phase 8): ignored in older flowcharts
+    retired = ("nruns", "errors")
+
     parameters = {
         **source_parameters("the ionic conductivity"),
         "frame interval": {
