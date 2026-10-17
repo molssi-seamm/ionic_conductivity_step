@@ -7,7 +7,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>History &#8212; SEAMM Ionic Conductivity Plug-in 2026.10.17 documentation</title>
+    <title>History &#8212; SEAMM Ionic Conductivity Plug-in 2026.10.17.1 documentation</title>
   
   
   
@@ -40,7 +40,7 @@
   <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=18bd87630a240e9c25be" />
 <link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=18bd87630a240e9c25be" />
 
-    <script src="_static/documentation_options.js?v=fed69469"></script>
+    <script src="_static/documentation_options.js?v=62bfd45e"></script>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/clipboard.min.js?v=a7894cd8"></script>
@@ -54,7 +54,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="2026.10.17" />
+  <meta name="docsearch:version" content="2026.10.17.1" />
   
     
     <script src="_static/searchtools.js"></script>
@@ -511,6 +511,29 @@
   <section id="history">
 <h1>History<a class="headerlink" href="#history" title="Link to this heading">#</a></h1>
 <dl class="simple">
+<dt>2026.10.17.1 – Analyze MD run before the step; labelled errors; no ions skipped</dt><dd><ul class="simple">
+<li><p>The step analyzes MD run before it in the flowchart – the runs of a Loop around
+the MD, as independent replicas (“the last MD run of each loop iteration”, the
+default) – or md.h5md files; it no longer runs its own MD in a sub-flowchart.
+Older flowcharts that stored its settings for that can still be read; the check
+before the job runs says what replaces them.</p></li>
+<li><p>The check before the job runs also warns when the analysis is inside the loop
+holding its MD, when the loop changes the temperature or pressure, and when the
+thermostat does not suit the analysis, with fixes; the step warns before the MD
+when the system is small.</p></li>
+<li><p>Errors are the 95% confidence interval, Student’s t for the number of runs or
+blocks, and the output says so; stored errors are standard errors.</p></li>
+<li><p>The state of the runs – temperature, pressure, volume and density with their
+errors, and the equilibrium density where an NPT run before them gives the bulk
+modulus – is reported and stored. The values of each run or block are in
+step.out.</p></li>
+<li><p>Bugfix: a system without ions stopped the job; it is now reported and skipped.</p></li>
+<li><p>A warning before the MD runs when there are fewer than about 10 ion pairs.</p></li>
+<li><p>σ and the ions’ diffusion coefficients are averages of their x, y and z components,
+with a check that they agree; with the Yeh-Hummer correction, the values in the
+box and corrected are both given, with the viscosity used.</p></li>
+</ul>
+</dd>
 <dt>2026.10.17 – First release: the ionic conductivity</dt><dd><ul class="simple">
 <li><p>The ionic conductivity of electrolytes from MD with fixed charges, by
 Einstein-Helfand from the collective displacement of the ions’ charges and by

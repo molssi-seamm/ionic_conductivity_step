@@ -6,7 +6,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ionic_conductivity_step.ionic_conductivity &#8212; SEAMM Ionic Conductivity Plug-in 2026.10.17 documentation</title>
+    <title>ionic_conductivity_step.ionic_conductivity &#8212; SEAMM Ionic Conductivity Plug-in 2026.10.17.1 documentation</title>
   
   
   
@@ -39,7 +39,7 @@
   <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=18bd87630a240e9c25be" />
 <link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=18bd87630a240e9c25be" />
 
-    <script src="../../_static/documentation_options.js?v=fed69469"></script>
+    <script src="../../_static/documentation_options.js?v=62bfd45e"></script>
     <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -52,7 +52,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="2026.10.17" />
+  <meta name="docsearch:version" content="2026.10.17.1" />
   
     
     <script src="../../_static/searchtools.js"></script>
@@ -498,34 +498,46 @@
 <span class="sd">σ = lim ⟨‖P(t) − P(0)‖²⟩ / (6 V kB t) with P = Σ qᵢ rᵢ over the ions; by</span>
 <span class="sd">Nernst-Einstein, from the ions' self-diffusion; and their ratio, the ionicity.</span>
 <span class="sd">The analysis is in :mod:`seamm_md_analysis.electric`.</span>
+
+<span class="sd">The MD is run before this step -- in a Loop for independent runs -- or read from</span>
+<span class="sd">files; the step analyzes it.</span>
 <span class="sd">"""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">Counter</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">importlib.resources</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">traceback</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">seamm_md_analysis</span><span class="w"> </span><span class="kn">import</span> <span class="n">open_md</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">seamm_md_analysis</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">Estimate</span><span class="p">,</span>
+    <span class="n">component_check</span><span class="p">,</span>
+    <span class="n">isotropy</span><span class="p">,</span>
+    <span class="n">open_md</span><span class="p">,</span>
+<span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">seamm_md_analysis.electric</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">cell_dipole</span><span class="p">,</span>
     <span class="n">classify_molecules</span><span class="p">,</span>
-    <span class="n">collective_msd</span><span class="p">,</span>
     <span class="n">conductivity_from_msd</span><span class="p">,</span>
     <span class="n">nernst_einstein</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">seamm_md_analysis.transport</span><span class="w"> </span><span class="kn">import</span> <span class="n">fit_slope</span><span class="p">,</span> <span class="n">msd_by_species</span><span class="p">,</span> <span class="n">yeh_hummer_correction</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">seamm_md_analysis.transport</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">fit_slope</span><span class="p">,</span>
+    <span class="n">msd_by_species</span><span class="p">,</span>
+    <span class="n">squared_displacement_sums</span><span class="p">,</span>
+    <span class="n">yeh_hummer_correction</span><span class="p">,</span>
+<span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">seamm_md_analysis.requirements</span><span class="w"> </span><span class="kn">import</span> <span class="n">Need</span><span class="p">,</span> <span class="n">Requirements</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">seamm_md_analysis.step_support</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">print_details</span><span class="p">,</span>
     <span class="n">check_md_flowchart</span><span class="p">,</span>
     <span class="n">preceding_viscosity</span><span class="p">,</span>
     <span class="n">md_inputs</span><span class="p">,</span>
     <span class="n">read_files</span><span class="p">,</span>
-    <span class="n">request_sampling</span><span class="p">,</span>
-    <span class="n">run_own_md</span><span class="p">,</span>
+    <span class="n">report_state</span><span class="p">,</span>
+    <span class="n">size_warnings</span><span class="p">,</span>
+    <span class="n">state_data</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">tabulate</span><span class="w"> </span><span class="kn">import</span> <span class="n">tabulate</span>
 
@@ -549,6 +561,16 @@
 <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
     <span class="n">molsystem</span><span class="o">.</span><span class="n">add_properties_from_file</span><span class="p">(</span><span class="n">csv_file</span><span class="p">)</span>
 
+<span class="c1">#: The fewest cation-anion pairs for a useful conductivity</span>
+<span class="n">MIN_ION_PAIRS</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="c1">#: The fewest frames in a block of a single run</span>
+<span class="n">MIN_BLOCK_FRAMES</span> <span class="o">=</span> <span class="mi">20</span>
+<span class="c1">#: Å²/ps in m²/s</span>
+<span class="n">A2_PER_PS</span> <span class="o">=</span> <span class="mf">1.0e-8</span>
+<span class="c1">#: The unit of the self-diffusion coefficients in the output, m²/s</span>
+<span class="n">D_UNIT</span> <span class="o">=</span> <span class="mf">1.0e-9</span>
+<span class="n">AXES</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"xx"</span><span class="p">,</span> <span class="s2">"yy"</span><span class="p">,</span> <span class="s2">"zz"</span><span class="p">)</span>
+
 
 <div class="viewcode-block" id="hill_formula">
 <a class="viewcode-back" href="../../api/ionic_conductivity_step.html#ionic_conductivity_step.ionic_conductivity.hill_formula">[docs]</a>
@@ -564,6 +586,44 @@
 
 
 
+<div class="viewcode-block" id="count_ions">
+<a class="viewcode-back" href="../../api/ionic_conductivity_step.html#ionic_conductivity_step.ionic_conductivity.count_ions">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">count_ions</span><span class="p">(</span><span class="n">charges</span><span class="p">,</span> <span class="n">molecules</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""The number of cations and anions, from the charges of the atoms.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    charges : array_like</span>
+<span class="sd">        The charge of each atom, e.</span>
+<span class="sd">    molecules : [[int]]</span>
+<span class="sd">        The atoms of each molecule.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    (int, int)</span>
+<span class="sd">        The numbers of cations and anions.</span>
+<span class="sd">    """</span>
+    <span class="n">classes</span> <span class="o">=</span> <span class="n">classify_molecules</span><span class="p">(</span><span class="n">charges</span><span class="p">,</span> <span class="n">molecules</span><span class="p">)</span>
+    <span class="n">z</span> <span class="o">=</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">classes</span><span class="p">[</span><span class="s2">"z"</span><span class="p">][</span><span class="n">m</span><span class="p">])</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">classes</span><span class="p">[</span><span class="s2">"ions"</span><span class="p">]]</span>
+    <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="mi">1</span> <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="n">z</span> <span class="k">if</span> <span class="n">q</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">),</span> <span class="nb">sum</span><span class="p">(</span><span class="mi">1</span> <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="n">z</span> <span class="k">if</span> <span class="n">q</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="pairs_note">
+<a class="viewcode-back" href="../../api/ionic_conductivity_step.html#ionic_conductivity_step.ionic_conductivity.pairs_note">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">pairs_note</span><span class="p">(</span><span class="n">n_cations</span><span class="p">,</span> <span class="n">n_anions</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""A warning if there are too few ion pairs for useful statistics, or None."""</span>
+    <span class="n">pairs</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">n_cations</span><span class="p">,</span> <span class="n">n_anions</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">pairs</span> <span class="o">&gt;=</span> <span class="n">MIN_ION_PAIRS</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="sa">f</span><span class="s2">"There are only </span><span class="si">{</span><span class="n">pairs</span><span class="si">}</span><span class="s2"> cation-anion pairs (</span><span class="si">{</span><span class="n">n_cations</span><span class="si">}</span><span class="s2"> cations, "</span>
+        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">n_anions</span><span class="si">}</span><span class="s2"> anions): the conductivity needs at least about </span><span class="si">{</span><span class="n">MIN_ION_PAIRS</span><span class="si">}</span><span class="s2">, "</span>
+        <span class="s2">"or it and its error come out poorly. Use a larger system."</span>
+    <span class="p">)</span></div>
+
+
+
 <div class="viewcode-block" id="IonicConductivity">
 <a class="viewcode-back" href="../../api/ionic_conductivity_step.html#ionic_conductivity_step.ionic_conductivity.IonicConductivity">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">IonicConductivity</span><span class="p">(</span><span class="n">seamm</span><span class="o">.</span><span class="n">Node</span><span class="p">):</span>
@@ -572,9 +632,6 @@
 
 <span class="sd">    Attributes</span>
 <span class="sd">    ----------</span>
-<span class="sd">    subflowchart : seamm.Flowchart</span>
-<span class="sd">        The MD to run, when this step runs its own MD.</span>
-
 <span class="sd">    parameters : IonicConductivityParameters</span>
 <span class="sd">        The control parameters for Ionic Conductivity.</span>
 <span class="sd">    """</span>
@@ -583,15 +640,10 @@
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">flowchart</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
         <span class="n">title</span><span class="o">=</span><span class="s2">"Ionic Conductivity"</span><span class="p">,</span>
-        <span class="n">namespace</span><span class="o">=</span><span class="s2">"org.molssi.seamm"</span><span class="p">,</span>
         <span class="n">extension</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
         <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">,</span>
     <span class="p">):</span>
         <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Creating Ionic Conductivity </span><span class="si">{</span><span class="bp">self</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">subflowchart</span> <span class="o">=</span> <span class="n">seamm</span><span class="o">.</span><span class="n">Flowchart</span><span class="p">(</span>
-            <span class="n">parent</span><span class="o">=</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"Ionic Conductivity"</span><span class="p">,</span> <span class="n">namespace</span><span class="o">=</span><span class="n">namespace</span>
-        <span class="p">)</span>
-
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
             <span class="n">flowchart</span><span class="o">=</span><span class="n">flowchart</span><span class="p">,</span>
             <span class="n">title</span><span class="o">=</span><span class="s2">"Ionic Conductivity"</span><span class="p">,</span>
@@ -602,7 +654,6 @@
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_metadata</span> <span class="o">=</span> <span class="n">ionic_conductivity_step</span><span class="o">.</span><span class="n">metadata</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span> <span class="o">=</span> <span class="n">ionic_conductivity_step</span><span class="o">.</span><span class="n">IonicConductivityParameters</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_file_handler</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_reset</span><span class="p">()</span>
 
     <span class="nd">@property</span>
@@ -626,8 +677,6 @@
         <span class="n">parser_name</span> <span class="o">=</span> <span class="s2">"ionic-conductivity-step"</span>
         <span class="n">parser</span> <span class="o">=</span> <span class="n">seamm_util</span><span class="o">.</span><span class="n">getParser</span><span class="p">()</span>
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">subflowchart</span><span class="o">.</span><span class="n">_parser</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">flowchart</span><span class="o">.</span><span class="n">_parser</span>
-
         <span class="n">parser_exists</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">parser_name</span><span class="p">)</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">create_parser</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">parser_name</span><span class="p">)</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">parser_exists</span><span class="p">:</span>
@@ -637,12 +686,6 @@
                 <span class="n">action</span><span class="o">=</span><span class="s2">"store_true"</span><span class="p">,</span>
                 <span class="n">help</span><span class="o">=</span><span class="s2">"whether to write out html files for graphs, etc."</span><span class="p">,</span>
             <span class="p">)</span>
-
-        <span class="bp">self</span><span class="o">.</span><span class="n">subflowchart</span><span class="o">.</span><span class="n">reset_visited</span><span class="p">()</span>
-        <span class="n">node</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">subflowchart</span><span class="o">.</span><span class="n">get_node</span><span class="p">(</span><span class="s2">"1"</span><span class="p">)</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
-        <span class="k">while</span> <span class="n">node</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">node</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="n">create_parser</span><span class="p">()</span>
-
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">next</span><span class="p">()</span></div>
 
 
@@ -658,25 +701,12 @@
             <span class="s2">"the ionicity"</span>
         <span class="p">)</span>
 
-        <span class="n">source</span> <span class="o">=</span> <span class="n">P</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"md source"</span><span class="p">,</span> <span class="n">run_own_md</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">source</span> <span class="o">==</span> <span class="n">run_own_md</span><span class="p">:</span>
-            <span class="n">text</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"Calculate </span><span class="si">{</span><span class="n">what</span><span class="si">}</span><span class="s2">, from </span><span class="si">{</span><span class="n">P</span><span class="p">[</span><span class="s1">'nruns'</span><span class="p">]</span><span class="si">}</span><span class="s2"> runs of the MD below.</span><span class="se">\n\n</span><span class="s2">"</span>
+        <span class="n">source</span> <span class="o">=</span> <span class="n">P</span><span class="p">[</span><span class="s2">"md source"</span><span class="p">]</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"Calculate </span><span class="si">{</span><span class="n">what</span><span class="si">}</span><span class="s2">, from "</span>
+        <span class="k">if</span> <span class="n">source</span> <span class="o">==</span> <span class="n">read_files</span><span class="p">:</span>
+            <span class="n">text</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">"the MD in </span><span class="si">{</span><span class="n">P</span><span class="p">[</span><span class="s1">'md files'</span><span class="p">]</span><span class="si">}</span><span class="s2">."</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">text</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"Calculate </span><span class="si">{</span><span class="n">what</span><span class="si">}</span><span class="s2">, from "</span>
-            <span class="k">if</span> <span class="n">source</span> <span class="o">==</span> <span class="n">read_files</span><span class="p">:</span>
-                <span class="n">text</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">"the MD in </span><span class="si">{</span><span class="n">P</span><span class="p">[</span><span class="s1">'md files'</span><span class="p">]</span><span class="si">}</span><span class="s2">.</span><span class="se">\n\n</span><span class="s2">"</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">text</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2"> earlier in the flowchart.</span><span class="se">\n\n</span><span class="s2">"</span>
-            <span class="n">short</span> <span class="o">=</span> <span class="kc">True</span>
-
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">short</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">subflowchart</span><span class="o">.</span><span class="n">root_directory</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">flowchart</span><span class="o">.</span><span class="n">root_directory</span>
-            <span class="n">node</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">subflowchart</span><span class="o">.</span><span class="n">get_node</span><span class="p">(</span><span class="s2">"1"</span><span class="p">)</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
-            <span class="k">while</span> <span class="n">node</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">text</span> <span class="o">+=</span> <span class="n">__</span><span class="p">(</span><span class="n">node</span><span class="o">.</span><span class="n">description_text</span><span class="p">())</span><span class="o">.</span><span class="fm">__str__</span><span class="p">()</span>
-                <span class="n">text</span> <span class="o">+=</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span>
-                <span class="n">node</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
-
+            <span class="n">text</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2"> earlier in the flowchart."</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">header</span> <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span> <span class="o">+</span> <span class="n">__</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">4</span> <span class="o">*</span> <span class="s2">" "</span><span class="p">)</span><span class="o">.</span><span class="fm">__str__</span><span class="p">()</span></div>
 
 
@@ -690,18 +720,9 @@
         <span class="n">P</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">current_values_to_dict</span><span class="p">(</span>
             <span class="n">context</span><span class="o">=</span><span class="n">seamm</span><span class="o">.</span><span class="n">flowchart_variables</span><span class="o">.</span><span class="n">_data</span>
         <span class="p">)</span>
-        <span class="n">printer</span><span class="o">.</span><span class="n">important</span><span class="p">(</span><span class="n">__</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">description_text</span><span class="p">(</span><span class="n">P</span><span class="p">,</span> <span class="n">short</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span> <span class="n">indent</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">indent</span><span class="p">))</span>
+        <span class="n">printer</span><span class="o">.</span><span class="n">important</span><span class="p">(</span><span class="n">__</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">description_text</span><span class="p">(</span><span class="n">P</span><span class="p">),</span> <span class="n">indent</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">indent</span><span class="p">))</span>
 
         <span class="n">_</span><span class="p">,</span> <span class="n">configuration</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_system_configuration</span><span class="p">()</span>
-        <span class="k">if</span> <span class="p">(</span>
-            <span class="n">P</span><span class="p">[</span><span class="s2">"md source"</span><span class="p">]</span> <span class="o">==</span> <span class="n">run_own_md</span>
-            <span class="ow">and</span> <span class="n">configuration</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-            <span class="ow">and</span> <span class="n">configuration</span><span class="o">.</span><span class="n">periodicity</span> <span class="o">!=</span> <span class="mi">3</span>
-        <span class="p">):</span>
-            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
-                <span class="s2">"The Ionic Conductivity step needs a periodic system: a "</span>
-                <span class="s2">"conductivity is a property of the bulk."</span>
-            <span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">references</span><span class="o">.</span><span class="n">cite</span><span class="p">(</span>
             <span class="n">raw</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_bibliography</span><span class="p">[</span><span class="s2">"Hansen2013"</span><span class="p">],</span>
@@ -711,23 +732,15 @@
             <span class="n">note</span><span class="o">=</span><span class="s2">"The Einstein-Helfand conductivity and the Nernst-Einstein relation."</span><span class="p">,</span>
         <span class="p">)</span>
 
-        <span class="n">handlers</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_quiet_handlers</span><span class="p">()</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">P</span><span class="p">[</span><span class="s2">"md source"</span><span class="p">]</span> <span class="o">==</span> <span class="n">run_own_md</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_run_own_md</span><span class="p">(</span><span class="n">P</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">paths</span> <span class="o">=</span> <span class="n">md_inputs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">P</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"all/position"</span><span class="p">)</span>
-                <span class="n">printer</span><span class="o">.</span><span class="n">job</span><span class="p">(</span>
-                    <span class="n">__</span><span class="p">(</span>
-                        <span class="sa">f</span><span class="s2">"Analyzing </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">)</span><span class="si">}</span><span class="s2"> MD run"</span>
-                        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="s1">'s'</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">''</span><span class="si">}</span><span class="s2">: "</span>
-                        <span class="o">+</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">),</span>
-                        <span class="n">indent</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">indent</span> <span class="o">+</span> <span class="mi">4</span> <span class="o">*</span> <span class="s2">" "</span><span class="p">,</span>
-                    <span class="p">)</span>
-                <span class="p">)</span>
-        <span class="k">finally</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_restore_handlers</span><span class="p">(</span><span class="n">handlers</span><span class="p">)</span>
-
+        <span class="bp">self</span><span class="o">.</span><span class="n">paths</span> <span class="o">=</span> <span class="n">md_inputs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">P</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"all/position"</span><span class="p">)</span>
+        <span class="n">printer</span><span class="o">.</span><span class="n">job</span><span class="p">(</span>
+            <span class="n">__</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"Analyzing </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">)</span><span class="si">}</span><span class="s2"> MD run"</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="s1">'s'</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">''</span><span class="si">}</span><span class="s2">: "</span>
+                <span class="o">+</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">),</span>
+                <span class="n">indent</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">indent</span> <span class="o">+</span> <span class="mi">4</span> <span class="o">*</span> <span class="s2">" "</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">"No MD run finished, so there is nothing to analyze."</span><span class="p">)</span>
 
@@ -735,109 +748,13 @@
         <span class="k">return</span> <span class="n">next_node</span></div>
 
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_quiet_handlers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""Send only job-level output to job.out and the screen while MD runs."""</span>
-        <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">for</span> <span class="n">handler</span> <span class="ow">in</span> <span class="n">job</span><span class="o">.</span><span class="n">handlers</span><span class="p">:</span>
-            <span class="k">if</span> <span class="p">(</span>
-                <span class="nb">isinstance</span><span class="p">(</span><span class="n">handler</span><span class="p">,</span> <span class="n">logging</span><span class="o">.</span><span class="n">FileHandler</span><span class="p">)</span>
-                <span class="ow">and</span> <span class="s2">"job.out"</span> <span class="ow">in</span> <span class="n">handler</span><span class="o">.</span><span class="n">baseFilename</span>
-            <span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">handler</span><span class="p">,</span> <span class="n">logging</span><span class="o">.</span><span class="n">StreamHandler</span><span class="p">):</span>
-                <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">handler</span><span class="p">,</span> <span class="n">handler</span><span class="o">.</span><span class="n">level</span><span class="p">))</span>
-                <span class="n">handler</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">printing</span><span class="o">.</span><span class="n">JOB</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">result</span>
-
-    <span class="nd">@staticmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">_restore_handlers</span><span class="p">(</span><span class="n">handlers</span><span class="p">):</span>
-        <span class="k">for</span> <span class="n">handler</span><span class="p">,</span> <span class="n">level</span> <span class="ow">in</span> <span class="n">handlers</span><span class="p">:</span>
-            <span class="n">handler</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">_run_own_md</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">P</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""Run the MD in the sub-flowchart several times, keeping each run's file."""</span>
-        <span class="n">changes</span><span class="p">,</span> <span class="n">missing</span> <span class="o">=</span> <span class="n">request_sampling</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">subflowchart</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">md_requirements</span><span class="p">(</span><span class="n">P</span><span class="p">))</span>
-        <span class="k">for</span> <span class="n">change</span> <span class="ow">in</span> <span class="n">changes</span><span class="p">:</span>
-            <span class="n">printer</span><span class="o">.</span><span class="n">job</span><span class="p">(</span><span class="n">__</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Note: </span><span class="si">{</span><span class="n">change</span><span class="si">}</span><span class="s2">."</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">indent</span> <span class="o">+</span> <span class="mi">4</span> <span class="o">*</span> <span class="s2">" "</span><span class="p">))</span>
-        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
-                <span class="s2">"The MD in the sub-flowchart cannot provide what is needed: "</span>
-                <span class="o">+</span> <span class="s2">" "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span>
-            <span class="p">)</span>
-
-        <span class="n">first_node</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">subflowchart</span><span class="o">.</span><span class="n">get_node</span><span class="p">(</span><span class="s2">"1"</span><span class="p">)</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
-        <span class="k">if</span> <span class="n">first_node</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
-                <span class="s2">"The sub-flowchart of the Ionic Conductivity step is empty."</span>
-            <span class="p">)</span>
-        <span class="n">node</span> <span class="o">=</span> <span class="n">first_node</span>
-        <span class="k">while</span> <span class="n">node</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">node</span><span class="o">.</span><span class="n">all_options</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">all_options</span>
-            <span class="n">node</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">subflowchart</span><span class="o">.</span><span class="n">executor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">flowchart</span><span class="o">.</span><span class="n">executor</span>
-
-        <span class="n">nruns</span> <span class="o">=</span> <span class="n">P</span><span class="p">[</span><span class="s2">"nruns"</span><span class="p">]</span>
-        <span class="n">fmt_run</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"0</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">nruns</span><span class="p">))</span><span class="si">}</span><span class="s2">"</span>
-        <span class="k">for</span> <span class="n">run</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">nruns</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
-            <span class="n">run_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">directory</span><span class="p">)</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">"run_</span><span class="si">{</span><span class="n">run</span><span class="si">:{</span><span class="n">fmt_run</span><span class="si">}}</span><span class="s2">"</span>
-            <span class="n">run_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_file_handler</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_file_handler</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
-                <span class="n">job</span><span class="o">.</span><span class="n">removeHandler</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_file_handler</span><span class="p">)</span>
-            <span class="n">path</span> <span class="o">=</span> <span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"Run.out"</span>
-            <span class="n">path</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="n">missing_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_file_handler</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">FileHandler</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_file_handler</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">printing</span><span class="o">.</span><span class="n">NORMAL</span><span class="p">)</span>
-            <span class="n">formatter</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">Formatter</span><span class="p">(</span><span class="n">fmt</span><span class="o">=</span><span class="s2">"</span><span class="si">{message:s}</span><span class="s2">"</span><span class="p">,</span> <span class="n">style</span><span class="o">=</span><span class="s2">"{"</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_file_handler</span><span class="o">.</span><span class="n">setFormatter</span><span class="p">(</span><span class="n">formatter</span><span class="p">)</span>
-            <span class="n">job</span><span class="o">.</span><span class="n">addHandler</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_file_handler</span><span class="p">)</span>
-
-            <span class="bp">self</span><span class="o">.</span><span class="n">flowchart</span><span class="o">.</span><span class="n">reset_visited</span><span class="p">()</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">set_subids</span><span class="p">((</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_id</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"run_</span><span class="si">{</span><span class="n">run</span><span class="si">:{</span><span class="n">fmt_run</span><span class="si">}}</span><span class="s2">"</span><span class="p">))</span>
-
-            <span class="n">node</span> <span class="o">=</span> <span class="n">first_node</span>
-            <span class="k">try</span><span class="p">:</span>
-                <span class="k">while</span> <span class="n">node</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                    <span class="n">node</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
-            <span class="k">except</span> <span class="ne">DeprecationWarning</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-                <span class="n">printer</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">Deprecation warning: "</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">))</span>
-                <span class="n">traceback</span><span class="o">.</span><span class="n">print_exc</span><span class="p">(</span><span class="n">file</span><span class="o">=</span><span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="p">)</span>
-                <span class="n">traceback</span><span class="o">.</span><span class="n">print_exc</span><span class="p">(</span><span class="n">file</span><span class="o">=</span><span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="p">)</span>
-            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-                <span class="n">printer</span><span class="o">.</span><span class="n">job</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Caught exception in run </span><span class="si">{</span><span class="n">run</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-                <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"stderr.out"</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">)</span> <span class="k">as</span> <span class="n">fd</span><span class="p">:</span>
-                    <span class="n">traceback</span><span class="o">.</span><span class="n">print_exc</span><span class="p">(</span><span class="n">file</span><span class="o">=</span><span class="n">fd</span><span class="p">)</span>
-                <span class="k">if</span> <span class="s2">"continue"</span> <span class="ow">in</span> <span class="n">P</span><span class="p">[</span><span class="s2">"errors"</span><span class="p">]:</span>
-                    <span class="k">continue</span>
-                <span class="k">elif</span> <span class="s2">"exit"</span> <span class="ow">in</span> <span class="n">P</span><span class="p">[</span><span class="s2">"errors"</span><span class="p">]:</span>
-                    <span class="k">break</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="k">raise</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_read_run</span><span class="p">(</span><span class="n">run</span><span class="p">,</span> <span class="n">run_dir</span><span class="p">))</span>
-
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_file_handler</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_file_handler</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
-            <span class="n">job</span><span class="o">.</span><span class="n">removeHandler</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_file_handler</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_file_handler</span> <span class="o">=</span> <span class="kc">None</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">_read_run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">run</span><span class="p">,</span> <span class="n">run_dir</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""The md.h5md of one run of the sub-flowchart with the positions."""</span>
-        <span class="n">paths</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">run_dir</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">"**/md.h5md"</span><span class="p">)):</span>
-            <span class="k">with</span> <span class="n">open_md</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="k">as</span> <span class="n">md</span><span class="p">:</span>
-                <span class="k">if</span> <span class="n">md</span><span class="o">.</span><span class="n">has_particles</span><span class="p">(</span><span class="s2">"position"</span><span class="p">):</span>
-                    <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
-        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">paths</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"There are no positions for run </span><span class="si">{</span><span class="n">run</span><span class="si">}</span><span class="s2"> in </span><span class="si">{</span><span class="n">run_dir</span><span class="si">}</span><span class="s2">."</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">paths</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-
     <span class="c1"># ------------------------------------------------------------------</span>
     <span class="c1"># The analysis</span>
     <span class="c1"># ------------------------------------------------------------------</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_read</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">configuration</span><span class="p">,</span> <span class="n">ion_atoms</span><span class="p">,</span> <span class="n">ion_charges</span><span class="p">,</span> <span class="n">ions</span><span class="p">,</span> <span class="n">masses</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""The collective charge displacement and the centres of mass of the ions</span>
-<span class="sd">        in each frame, the interval between frames (ps), and the mean volume (Å³)</span>
-<span class="sd">        and temperature (K) of one run."""</span>
+<span class="w">        </span><span class="sd">"""One run: the collective charge displacement and the centres of mass of</span>
+<span class="sd">        the ions in each frame, the interval between frames (ps), the mean volume</span>
+<span class="sd">        (Å³) and temperature (K), and whether the run is isotropic."""</span>
         <span class="k">with</span> <span class="n">open_md</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="k">as</span> <span class="n">md</span><span class="p">:</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">md</span><span class="o">.</span><span class="n">periodic</span><span class="p">:</span>
                 <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"The MD in </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2"> is not periodic."</span><span class="p">)</span>
@@ -851,6 +768,7 @@
                 <span class="k">else</span> <span class="kc">None</span>
             <span class="p">)</span>
             <span class="n">T</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">md</span><span class="o">.</span><span class="n">observable</span><span class="p">(</span><span class="s2">"temperature"</span><span class="p">,</span> <span class="n">units</span><span class="o">=</span><span class="s2">"K"</span><span class="p">)</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span>
+            <span class="n">isotropic</span> <span class="o">=</span> <span class="n">isotropy</span><span class="p">(</span><span class="n">md</span><span class="p">)</span>
             <span class="k">with</span> <span class="n">warnings</span><span class="o">.</span><span class="n">catch_warnings</span><span class="p">():</span>
                 <span class="n">warnings</span><span class="o">.</span><span class="n">simplefilter</span><span class="p">(</span><span class="s2">"ignore"</span><span class="p">)</span>
                 <span class="n">u</span> <span class="o">=</span> <span class="n">md</span><span class="o">.</span><span class="n">universe</span><span class="p">(</span><span class="n">configuration</span><span class="p">)</span>
@@ -863,7 +781,65 @@
                 <span class="n">P</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cell_dipole</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">ion_atoms</span><span class="p">,</span> <span class="n">ion_charges</span><span class="p">))</span>
                 <span class="n">com</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">w</span> <span class="o">@</span> <span class="n">x</span><span class="p">[</span><span class="n">m</span><span class="p">]</span> <span class="k">for</span> <span class="n">m</span><span class="p">,</span> <span class="n">w</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">ions</span><span class="p">,</span> <span class="n">weights</span><span class="p">)])</span>
                 <span class="n">V</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">volume</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">P</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">com</span><span class="p">),</span> <span class="n">dt</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">V</span><span class="p">)),</span> <span class="n">T</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">"P"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">P</span><span class="p">),</span>
+            <span class="s2">"com"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">com</span><span class="p">),</span>
+            <span class="s2">"dt"</span><span class="p">:</span> <span class="n">dt</span><span class="p">,</span>
+            <span class="s2">"V"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">V</span><span class="p">)),</span>
+            <span class="s2">"T"</span><span class="p">:</span> <span class="n">T</span><span class="p">,</span>
+            <span class="s2">"isotropic"</span><span class="p">:</span> <span class="n">isotropic</span><span class="p">,</span>
+        <span class="p">}</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_sample</span><span class="p">(</span><span class="n">Pc</span><span class="p">,</span> <span class="n">com</span><span class="p">,</span> <span class="n">dt</span><span class="p">,</span> <span class="n">V</span><span class="p">,</span> <span class="n">T</span><span class="p">,</span> <span class="n">groups</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""σ and the self-diffusion coefficients, by component, of one run or</span>
+<span class="sd">        block, and the MSDs for the graph.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        dict</span>
+<span class="sd">            ``sigma``: σ_xx, σ_yy, σ_zz (S/m); ``D``: (n_species, 3), m²/s;</span>
+<span class="sd">            ``msd``: the collective MSD (e² Å²) and ``species msd`` the MSD of each</span>
+<span class="sd">            species (Å²), summed over x, y and z; ``V``, ``T``.</span>
+<span class="sd">        """</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">Pc</span><span class="p">)</span>
+        <span class="n">ts</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">*</span> <span class="n">dt</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+        <span class="n">msd</span> <span class="o">=</span> <span class="n">squared_displacement_sums</span><span class="p">(</span><span class="n">Pc</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n</span><span class="p">))[:,</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="c1"># σ_aa = ⟨Δ P_a²⟩ / (2 V kB t), three times the 3D formula for one axis</span>
+        <span class="n">sigma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="mi">3</span> <span class="o">*</span> <span class="n">conductivity_from_msd</span><span class="p">(</span><span class="n">msd</span><span class="p">[:,</span> <span class="n">a</span><span class="p">],</span> <span class="n">dt</span><span class="p">,</span> <span class="n">V</span><span class="p">,</span> <span class="n">T</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)[</span><span class="s2">"sigma"</span><span class="p">]</span>
+                <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+            <span class="p">]</span>
+        <span class="p">)</span>
+        <span class="n">species_msd</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">msd_by_species</span><span class="p">(</span><span class="n">com</span><span class="p">,</span> <span class="n">groups</span><span class="p">)</span>
+        <span class="n">D</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="p">[</span>
+                    <span class="n">fit_slope</span><span class="p">(</span><span class="n">m</span><span class="p">[:,</span> <span class="n">a</span><span class="p">],</span> <span class="n">ts</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">end</span><span class="p">)</span><span class="o">.</span><span class="n">slope</span> <span class="o">/</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">A2_PER_PS</span>
+                    <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+                <span class="p">]</span>
+                <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">species_msd</span>
+            <span class="p">]</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">"sigma"</span><span class="p">:</span> <span class="n">sigma</span><span class="p">,</span>
+            <span class="s2">"D"</span><span class="p">:</span> <span class="n">D</span><span class="p">,</span>
+            <span class="s2">"msd"</span><span class="p">:</span> <span class="n">msd</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">),</span>
+            <span class="s2">"species msd"</span><span class="p">:</span> <span class="p">[</span><span class="n">m</span><span class="p">[:,</span> <span class="mi">3</span><span class="p">]</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">species_msd</span><span class="p">],</span>
+            <span class="s2">"V"</span><span class="p">:</span> <span class="n">V</span><span class="p">,</span>
+            <span class="s2">"T"</span><span class="p">:</span> <span class="n">T</span><span class="p">,</span>
+        <span class="p">}</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_ions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">configuration</span><span class="p">,</span> <span class="n">charges</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""The ions in the structure, from the charges of the MD."""</span>
+        <span class="n">molecules</span> <span class="o">=</span> <span class="n">configuration</span><span class="o">.</span><span class="n">find_molecules</span><span class="p">(</span><span class="n">as_indices</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">symbols</span> <span class="o">=</span> <span class="n">configuration</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">symbols</span>
+        <span class="n">classes</span> <span class="o">=</span> <span class="n">classify_molecules</span><span class="p">(</span><span class="n">charges</span><span class="p">,</span> <span class="n">molecules</span><span class="p">)</span>
+        <span class="n">ions</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">molecules</span><span class="p">[</span><span class="n">m</span><span class="p">])</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">classes</span><span class="p">[</span><span class="s2">"ions"</span><span class="p">]]</span>
+        <span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="n">hill_formula</span><span class="p">([</span><span class="n">symbols</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">m</span><span class="p">])</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">ions</span><span class="p">]</span>
+        <span class="n">z</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">classes</span><span class="p">[</span><span class="s2">"z"</span><span class="p">][</span><span class="n">m</span><span class="p">])</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">m</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">names</span><span class="p">,</span> <span class="n">classes</span><span class="p">[</span><span class="s2">"ions"</span><span class="p">])}</span>
+        <span class="k">return</span> <span class="n">ions</span><span class="p">,</span> <span class="n">names</span><span class="p">,</span> <span class="n">z</span>
 
 <div class="viewcode-block" id="IonicConductivity.analyze">
 <a class="viewcode-back" href="../../api/ionic_conductivity_step.html#ionic_conductivity_step.ionic_conductivity.IonicConductivity.analyze">[docs]</a>
@@ -871,8 +847,6 @@
 <span class="w">        </span><span class="sd">"""Analyze, print, plot and store the ionic conductivity."""</span>
         <span class="k">if</span> <span class="n">configuration</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">"There is no structure to analyze."</span><span class="p">)</span>
-        <span class="n">molecules</span> <span class="o">=</span> <span class="n">configuration</span><span class="o">.</span><span class="n">find_molecules</span><span class="p">(</span><span class="n">as_indices</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-        <span class="n">symbols</span> <span class="o">=</span> <span class="n">configuration</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">symbols</span>
 
         <span class="k">with</span> <span class="n">open_md</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="k">as</span> <span class="n">md</span><span class="p">:</span>
             <span class="n">charges</span> <span class="o">=</span> <span class="n">md</span><span class="o">.</span><span class="n">charges</span><span class="p">(</span><span class="s2">"all"</span><span class="p">)</span>
@@ -885,17 +859,25 @@
         <span class="n">charges</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">charges</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
         <span class="n">masses</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">masses</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
 
-        <span class="n">classes</span> <span class="o">=</span> <span class="n">classify_molecules</span><span class="p">(</span><span class="n">charges</span><span class="p">,</span> <span class="n">molecules</span><span class="p">)</span>
-        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">classes</span><span class="p">[</span><span class="s2">"ions"</span><span class="p">])</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="s2">': there are no ions."</span><span class="p">)</span>
-        <span class="n">ions</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">molecules</span><span class="p">[</span><span class="n">m</span><span class="p">])</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">classes</span><span class="p">[</span><span class="s2">"ions"</span><span class="p">]]</span>
-        <span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="n">hill_formula</span><span class="p">([</span><span class="n">symbols</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">m</span><span class="p">])</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">ions</span><span class="p">]</span>
-        <span class="n">z</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">classes</span><span class="p">[</span><span class="s2">"z"</span><span class="p">][</span><span class="n">m</span><span class="p">])</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">m</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">names</span><span class="p">,</span> <span class="n">classes</span><span class="p">[</span><span class="s2">"ions"</span><span class="p">])}</span>
+        <span class="n">ions</span><span class="p">,</span> <span class="n">names</span><span class="p">,</span> <span class="n">z</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ions</span><span class="p">(</span><span class="n">configuration</span><span class="p">,</span> <span class="n">charges</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">ions</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">printer</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span>
+                <span class="n">__</span><span class="p">(</span>
+                    <span class="s2">"There are no ions, so there is no ionic conductivity to "</span>
+                    <span class="s2">"calculate: skipped."</span><span class="p">,</span>
+                    <span class="n">indent</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">indent</span> <span class="o">+</span> <span class="mi">4</span> <span class="o">*</span> <span class="s2">" "</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">printer</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="s2">""</span><span class="p">)</span>
+            <span class="k">return</span>
+
         <span class="n">species</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">dict</span><span class="o">.</span><span class="n">fromkeys</span><span class="p">(</span><span class="n">names</span><span class="p">))</span>
         <span class="n">groups</span> <span class="o">=</span> <span class="p">[[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">names</span><span class="p">)</span> <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="n">s</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">species</span><span class="p">]</span>
         <span class="n">counts</span> <span class="o">=</span> <span class="p">{</span><span class="n">s</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">g</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span><span class="p">,</span> <span class="n">g</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">species</span><span class="p">,</span> <span class="n">groups</span><span class="p">)}</span>
         <span class="n">ion_atoms</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">ions</span><span class="p">)</span>
         <span class="n">ion_charges</span> <span class="o">=</span> <span class="n">charges</span><span class="p">[</span><span class="n">ion_atoms</span><span class="p">]</span>
+        <span class="n">n_cations</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">counts</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">species</span> <span class="k">if</span> <span class="n">z</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">n_anions</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">counts</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">species</span> <span class="k">if</span> <span class="n">z</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span>
         <span class="n">printer</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span>
             <span class="n">__</span><span class="p">(</span>
                 <span class="s2">"The ions: "</span>
@@ -911,78 +893,45 @@
         <span class="p">]</span>
         <span class="n">nruns</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">runs</span><span class="p">)</span>
         <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="o">=</span> <span class="n">P</span><span class="p">[</span><span class="s2">"fit start"</span><span class="p">],</span> <span class="n">P</span><span class="p">[</span><span class="s2">"fit end"</span><span class="p">]</span>
-        <span class="n">T</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">([</span><span class="n">r</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">runs</span><span class="p">]))</span>
-        <span class="n">V</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">([</span><span class="n">r</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">runs</span><span class="p">]))</span>
-        <span class="n">dt</span> <span class="o">=</span> <span class="n">runs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span> <span class="ow">or</span> <span class="mf">1.0</span>
-        <span class="n">n_frames</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">runs</span><span class="p">)</span>
+        <span class="n">dt</span> <span class="o">=</span> <span class="n">runs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"dt"</span><span class="p">]</span> <span class="ow">or</span> <span class="mf">1.0</span>
+        <span class="n">n_frames</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">"P"</span><span class="p">])</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">runs</span><span class="p">)</span>
+        <span class="n">isotropic</span><span class="p">,</span> <span class="n">why</span> <span class="o">=</span> <span class="n">runs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"isotropic"</span><span class="p">]</span>
 
-        <span class="c1"># Several runs: average the curves and take the spread of the runs. One</span>
-        <span class="c1"># run: blocks of it for the error.</span>
+        <span class="c1"># The independent samples: the runs, cut to the same length, or blocks of a</span>
+        <span class="c1"># single run. With one run, the values are from the whole run and only the</span>
+        <span class="c1"># errors from the blocks.</span>
+        <span class="n">whole</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="k">if</span> <span class="n">nruns</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="n">pieces</span> <span class="o">=</span> <span class="p">[(</span><span class="n">r</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">r</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">runs</span><span class="p">]</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">n_blocks</span> <span class="o">=</span> <span class="n">P</span><span class="p">[</span><span class="s2">"number of blocks"</span><span class="p">]</span> <span class="k">if</span> <span class="n">P</span><span class="p">[</span><span class="s2">"md source"</span><span class="p">]</span> <span class="o">!=</span> <span class="n">run_own_md</span> <span class="k">else</span> <span class="mi">1</span>
-            <span class="n">n_blocks</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">n_blocks</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">runs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span> <span class="o">//</span> <span class="mi">20</span><span class="p">))</span>
-            <span class="n">pieces</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span>
-                <span class="nb">zip</span><span class="p">(</span>
-                    <span class="n">np</span><span class="o">.</span><span class="n">array_split</span><span class="p">(</span><span class="n">runs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">n_blocks</span><span class="p">),</span>
-                    <span class="n">np</span><span class="o">.</span><span class="n">array_split</span><span class="p">(</span><span class="n">runs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">],</span> <span class="n">n_blocks</span><span class="p">),</span>
+            <span class="n">source</span> <span class="o">=</span> <span class="s2">"runs"</span>
+            <span class="n">n</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">"P"</span><span class="p">])</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">runs</span><span class="p">)</span>
+            <span class="n">samples</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_sample</span><span class="p">(</span>
+                    <span class="n">r</span><span class="p">[</span><span class="s2">"P"</span><span class="p">][:</span><span class="n">n</span><span class="p">],</span> <span class="n">r</span><span class="p">[</span><span class="s2">"com"</span><span class="p">][:</span><span class="n">n</span><span class="p">],</span> <span class="n">dt</span><span class="p">,</span> <span class="n">r</span><span class="p">[</span><span class="s2">"V"</span><span class="p">],</span> <span class="n">r</span><span class="p">[</span><span class="s2">"T"</span><span class="p">],</span> <span class="n">groups</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span>
                 <span class="p">)</span>
-            <span class="p">)</span>
-        <span class="n">n</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">pieces</span><span class="p">)</span>
-        <span class="n">ts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">*</span> <span class="n">dt</span>
-        <span class="n">msds</span> <span class="o">=</span> <span class="p">[</span><span class="n">collective_msd</span><span class="p">(</span><span class="n">Pc</span><span class="p">[:</span><span class="n">n</span><span class="p">])</span> <span class="k">for</span> <span class="n">Pc</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">pieces</span><span class="p">]</span>
-        <span class="n">sigmas</span> <span class="o">=</span> <span class="p">[</span>
-            <span class="n">conductivity_from_msd</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">dt</span><span class="p">,</span> <span class="n">V</span><span class="p">,</span> <span class="n">T</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">end</span><span class="p">)[</span><span class="s2">"sigma"</span><span class="p">]</span>
-            <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">msds</span>
-        <span class="p">]</span>
-        <span class="n">D_pieces</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="n">species_msds</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">com</span> <span class="ow">in</span> <span class="n">pieces</span><span class="p">:</span>
-            <span class="n">msd</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">msd_by_species</span><span class="p">(</span><span class="n">com</span><span class="p">[:</span><span class="n">n</span><span class="p">],</span> <span class="n">groups</span><span class="p">)</span>
-            <span class="n">species_msds</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">msd</span><span class="p">)</span>
-            <span class="n">D_pieces</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-                <span class="p">[</span>
-                    <span class="n">fit_slope</span><span class="p">(</span><span class="n">m</span><span class="p">[:,</span> <span class="mi">3</span><span class="p">],</span> <span class="n">ts</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span> <span class="n">start</span><span class="o">=</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">end</span><span class="p">)</span><span class="o">.</span><span class="n">slope</span>
-                    <span class="o">/</span> <span class="mi">6</span>
-                    <span class="o">*</span> <span class="mf">1.0e-8</span>
-                    <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">msd</span>
-                <span class="p">]</span>
-            <span class="p">)</span>
-
-        <span class="c1"># The value from the whole run(s); the error from the pieces</span>
-        <span class="k">if</span> <span class="n">nruns</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="n">mean_msd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">msds</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-            <span class="n">fit</span> <span class="o">=</span> <span class="n">conductivity_from_msd</span><span class="p">(</span><span class="n">mean_msd</span><span class="p">,</span> <span class="n">dt</span><span class="p">,</span> <span class="n">V</span><span class="p">,</span> <span class="n">T</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">end</span><span class="p">)</span>
-            <span class="n">plot_msd</span><span class="p">,</span> <span class="n">plot_ts</span> <span class="o">=</span> <span class="n">mean_msd</span><span class="p">,</span> <span class="n">ts</span>
+                <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">runs</span>
+            <span class="p">]</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">full</span> <span class="o">=</span> <span class="n">collective_msd</span><span class="p">(</span><span class="n">runs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span>
-            <span class="n">full_ts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">full</span><span class="o">.</span><span class="n">size</span><span class="p">)</span> <span class="o">*</span> <span class="n">dt</span>
-            <span class="n">fit</span> <span class="o">=</span> <span class="n">conductivity_from_msd</span><span class="p">(</span><span class="n">full</span><span class="p">,</span> <span class="n">dt</span><span class="p">,</span> <span class="n">V</span><span class="p">,</span> <span class="n">T</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">end</span><span class="p">)</span>
-            <span class="n">plot_msd</span><span class="p">,</span> <span class="n">plot_ts</span> <span class="o">=</span> <span class="n">full</span><span class="p">,</span> <span class="n">full_ts</span>
-        <span class="n">sigma</span> <span class="o">=</span> <span class="n">fit</span><span class="p">[</span><span class="s2">"sigma"</span><span class="p">]</span>
-        <span class="n">stderr</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">sigmas</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">sigmas</span><span class="p">)))</span>
-            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sigmas</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span>
-            <span class="k">else</span> <span class="kc">None</span>
-        <span class="p">)</span>
-        <span class="n">D</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">species</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">D_pieces</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">()))</span>
-        <span class="n">D_err</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="nb">dict</span><span class="p">(</span>
-                <span class="nb">zip</span><span class="p">(</span>
-                    <span class="n">species</span><span class="p">,</span>
-                    <span class="p">(</span>
-                        <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">D_pieces</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">D_pieces</span><span class="p">))</span>
-                    <span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span>
-                <span class="p">)</span>
+            <span class="n">source</span> <span class="o">=</span> <span class="s2">"blocks"</span>
+            <span class="n">run</span> <span class="o">=</span> <span class="n">runs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">n_blocks</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span>
+                <span class="mi">1</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">P</span><span class="p">[</span><span class="s2">"number of blocks"</span><span class="p">]),</span> <span class="nb">len</span><span class="p">(</span><span class="n">run</span><span class="p">[</span><span class="s2">"P"</span><span class="p">])</span> <span class="o">//</span> <span class="n">MIN_BLOCK_FRAMES</span><span class="p">)</span>
             <span class="p">)</span>
-            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">D_pieces</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span>
-            <span class="k">else</span> <span class="kc">None</span>
-        <span class="p">)</span>
+            <span class="n">samples</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_sample</span><span class="p">(</span><span class="n">Pc</span><span class="p">,</span> <span class="n">com</span><span class="p">,</span> <span class="n">dt</span><span class="p">,</span> <span class="n">run</span><span class="p">[</span><span class="s2">"V"</span><span class="p">],</span> <span class="n">run</span><span class="p">[</span><span class="s2">"T"</span><span class="p">],</span> <span class="n">groups</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">Pc</span><span class="p">,</span> <span class="n">com</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span>
+                    <span class="n">np</span><span class="o">.</span><span class="n">array_split</span><span class="p">(</span><span class="n">run</span><span class="p">[</span><span class="s2">"P"</span><span class="p">],</span> <span class="n">n_blocks</span><span class="p">),</span>
+                    <span class="n">np</span><span class="o">.</span><span class="n">array_split</span><span class="p">(</span><span class="n">run</span><span class="p">[</span><span class="s2">"com"</span><span class="p">],</span> <span class="n">n_blocks</span><span class="p">),</span>
+                <span class="p">)</span>
+            <span class="p">]</span>
+            <span class="n">whole</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sample</span><span class="p">(</span>
+                <span class="n">run</span><span class="p">[</span><span class="s2">"P"</span><span class="p">],</span> <span class="n">run</span><span class="p">[</span><span class="s2">"com"</span><span class="p">],</span> <span class="n">dt</span><span class="p">,</span> <span class="n">run</span><span class="p">[</span><span class="s2">"V"</span><span class="p">],</span> <span class="n">run</span><span class="p">[</span><span class="s2">"T"</span><span class="p">],</span> <span class="n">groups</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">n_blocks</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">samples</span> <span class="o">=</span> <span class="p">[</span><span class="n">whole</span><span class="p">]</span>
 
-        <span class="c1"># The Yeh-Hummer correction of the self-diffusion coefficients</span>
+        <span class="c1"># The viscosity for the Yeh-Hummer correction, if any</span>
         <span class="n">notes</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="n">D_corrected</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">record</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="k">if</span> <span class="n">P</span><span class="p">[</span><span class="s2">"Yeh-Hummer correction"</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">"no"</span><span class="p">:</span>
             <span class="n">record</span> <span class="o">=</span> <span class="n">preceding_viscosity</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">record</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -990,40 +939,118 @@
                     <span class="s2">"The Yeh-Hummer correction is skipped because no Viscosity step "</span>
                     <span class="s2">"ran before this one."</span>
                 <span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">L</span> <span class="o">=</span> <span class="n">V</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="mi">3</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1.0e-10</span>
-                <span class="n">correction</span> <span class="o">=</span> <span class="n">yeh_hummer_correction</span><span class="p">(</span><span class="n">T</span><span class="p">,</span> <span class="n">L</span><span class="p">,</span> <span class="n">record</span><span class="p">[</span><span class="s2">"value"</span><span class="p">])</span>
-                <span class="n">D_corrected</span> <span class="o">=</span> <span class="p">{</span><span class="n">s</span><span class="p">:</span> <span class="n">d</span> <span class="o">+</span> <span class="n">correction</span> <span class="k">for</span> <span class="n">s</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">D</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
-                <span class="n">notes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-                    <span class="s2">"The self-diffusion coefficients are corrected for the size of "</span>
-                    <span class="sa">f</span><span class="s2">"the cell (Yeh-Hummer, +</span><span class="si">{</span><span class="n">correction</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">1e9</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2">e-9 m^2/s) with the "</span>
-                    <span class="sa">f</span><span class="s2">"viscosity from step </span><span class="si">{</span><span class="n">record</span><span class="p">[</span><span class="s1">'id'</span><span class="p">]</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">record</span><span class="p">[</span><span class="s1">'step'</span><span class="p">]</span><span class="si">}</span><span class="s2">)."</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">derived</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">"""The isotropic σ and D, σ_NE and the ionicity of a run or block."""</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"sigma"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="s2">"sigma"</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">())}</span>
+            <span class="n">D</span> <span class="o">=</span> <span class="p">{</span><span class="n">sp</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span> <span class="k">for</span> <span class="n">sp</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">species</span><span class="p">,</span> <span class="n">s</span><span class="p">[</span><span class="s2">"D"</span><span class="p">])}</span>
+            <span class="n">result</span><span class="p">[</span><span class="s2">"D"</span><span class="p">]</span> <span class="o">=</span> <span class="n">D</span>
+            <span class="n">result</span><span class="p">[</span><span class="s2">"sigma_NE"</span><span class="p">]</span> <span class="o">=</span> <span class="n">nernst_einstein</span><span class="p">(</span><span class="n">D</span><span class="p">,</span> <span class="n">counts</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">s</span><span class="p">[</span><span class="s2">"V"</span><span class="p">],</span> <span class="n">s</span><span class="p">[</span><span class="s2">"T"</span><span class="p">])</span>
+            <span class="n">used</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="s2">"sigma_NE"</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">record</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">L</span> <span class="o">=</span> <span class="n">s</span><span class="p">[</span><span class="s2">"V"</span><span class="p">]</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="mi">3</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1.0e-10</span>
+                <span class="n">result</span><span class="p">[</span><span class="s2">"dD"</span><span class="p">]</span> <span class="o">=</span> <span class="n">yeh_hummer_correction</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="s2">"T"</span><span class="p">],</span> <span class="n">L</span><span class="p">,</span> <span class="n">record</span><span class="p">[</span><span class="s2">"value"</span><span class="p">])</span>
+                <span class="n">result</span><span class="p">[</span><span class="s2">"D, corrected"</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="n">sp</span><span class="p">:</span> <span class="n">d</span> <span class="o">+</span> <span class="n">result</span><span class="p">[</span><span class="s2">"dD"</span><span class="p">]</span> <span class="k">for</span> <span class="n">sp</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">D</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+                <span class="n">result</span><span class="p">[</span><span class="s2">"sigma_NE, corrected"</span><span class="p">]</span> <span class="o">=</span> <span class="n">nernst_einstein</span><span class="p">(</span>
+                    <span class="n">result</span><span class="p">[</span><span class="s2">"D, corrected"</span><span class="p">],</span> <span class="n">counts</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">s</span><span class="p">[</span><span class="s2">"V"</span><span class="p">],</span> <span class="n">s</span><span class="p">[</span><span class="s2">"T"</span><span class="p">]</span>
                 <span class="p">)</span>
-        <span class="n">sigma_ne</span> <span class="o">=</span> <span class="n">nernst_einstein</span><span class="p">(</span><span class="n">D_corrected</span> <span class="ow">or</span> <span class="n">D</span><span class="p">,</span> <span class="n">counts</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">V</span><span class="p">,</span> <span class="n">T</span><span class="p">)</span>
-        <span class="n">ionicity</span> <span class="o">=</span> <span class="n">sigma</span> <span class="o">/</span> <span class="n">sigma_ne</span> <span class="k">if</span> <span class="n">sigma_ne</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="kc">None</span>
+                <span class="n">used</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="s2">"sigma_NE, corrected"</span><span class="p">]</span>
+            <span class="n">result</span><span class="p">[</span><span class="s2">"ionicity"</span><span class="p">]</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="s2">"sigma"</span><span class="p">]</span> <span class="o">/</span> <span class="n">used</span> <span class="k">if</span> <span class="n">used</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="nb">float</span><span class="p">(</span><span class="s2">"nan"</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">result</span>
 
-        <span class="n">table</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"Property"</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">"Value"</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">"±"</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">"Units"</span><span class="p">:</span> <span class="p">[]}</span>
+        <span class="n">values</span> <span class="o">=</span> <span class="p">[</span><span class="n">derived</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">samples</span><span class="p">]</span>
+        <span class="n">best</span> <span class="o">=</span> <span class="n">derived</span><span class="p">(</span><span class="n">whole</span><span class="p">)</span> <span class="k">if</span> <span class="n">whole</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
 
-        <span class="k">def</span><span class="w"> </span><span class="nf">row</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">err</span><span class="p">,</span> <span class="n">units</span><span class="p">,</span> <span class="n">fmt</span><span class="o">=</span><span class="s2">".4g"</span><span class="p">):</span>
-            <span class="n">table</span><span class="p">[</span><span class="s2">"Property"</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
-            <span class="n">table</span><span class="p">[</span><span class="s2">"Value"</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">""</span> <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">value</span><span class="si">:{</span><span class="n">fmt</span><span class="si">}}</span><span class="s2">"</span><span class="p">)</span>
-            <span class="n">table</span><span class="p">[</span><span class="s2">"±"</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">""</span> <span class="k">if</span> <span class="n">err</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">err</span><span class="si">:</span><span class="s2">.2g</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">estimate</span><span class="p">(</span><span class="n">get</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">"""The estimate over the samples; with one run, the value of the whole</span>
+<span class="sd">            run and the error from its blocks."""</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">values</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">result</span> <span class="o">=</span> <span class="n">Estimate</span><span class="p">(</span><span class="n">get</span><span class="p">(</span><span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">samples</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">*</span> <span class="n">scale</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="n">source</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">result</span> <span class="o">=</span> <span class="n">Estimate</span><span class="o">.</span><span class="n">from_samples</span><span class="p">(</span>
+                    <span class="p">[</span><span class="n">get</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">scale</span> <span class="k">for</span> <span class="n">v</span><span class="p">,</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">samples</span><span class="p">)],</span> <span class="n">source</span><span class="o">=</span><span class="n">source</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="n">best</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">result</span><span class="o">.</span><span class="n">value</span> <span class="o">=</span> <span class="n">get</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="n">whole</span><span class="p">)</span> <span class="o">*</span> <span class="n">scale</span>
+            <span class="k">return</span> <span class="n">result</span>
+
+        <span class="n">sigma</span> <span class="o">=</span> <span class="n">estimate</span><span class="p">(</span><span class="k">lambda</span> <span class="n">v</span><span class="p">,</span> <span class="n">s</span><span class="p">:</span> <span class="n">v</span><span class="p">[</span><span class="s2">"sigma"</span><span class="p">])</span>
+        <span class="n">sigma_ne</span> <span class="o">=</span> <span class="n">estimate</span><span class="p">(</span><span class="k">lambda</span> <span class="n">v</span><span class="p">,</span> <span class="n">s</span><span class="p">:</span> <span class="n">v</span><span class="p">[</span><span class="s2">"sigma_NE"</span><span class="p">])</span>
+        <span class="n">ionicity</span> <span class="o">=</span> <span class="n">estimate</span><span class="p">(</span><span class="k">lambda</span> <span class="n">v</span><span class="p">,</span> <span class="n">s</span><span class="p">:</span> <span class="n">v</span><span class="p">[</span><span class="s2">"ionicity"</span><span class="p">])</span>
+        <span class="n">D</span> <span class="o">=</span> <span class="p">{</span><span class="n">sp</span><span class="p">:</span> <span class="n">estimate</span><span class="p">(</span><span class="k">lambda</span> <span class="n">v</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">sp</span><span class="o">=</span><span class="n">sp</span><span class="p">:</span> <span class="n">v</span><span class="p">[</span><span class="s2">"D"</span><span class="p">][</span><span class="n">sp</span><span class="p">],</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">D_UNIT</span><span class="p">)</span> <span class="k">for</span> <span class="n">sp</span> <span class="ow">in</span> <span class="n">species</span><span class="p">}</span>
+        <span class="k">if</span> <span class="n">record</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">sigma_ne_c</span> <span class="o">=</span> <span class="n">estimate</span><span class="p">(</span><span class="k">lambda</span> <span class="n">v</span><span class="p">,</span> <span class="n">s</span><span class="p">:</span> <span class="n">v</span><span class="p">[</span><span class="s2">"sigma_NE, corrected"</span><span class="p">])</span>
+            <span class="n">D_c</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="n">sp</span><span class="p">:</span> <span class="n">estimate</span><span class="p">(</span><span class="k">lambda</span> <span class="n">v</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">sp</span><span class="o">=</span><span class="n">sp</span><span class="p">:</span> <span class="n">v</span><span class="p">[</span><span class="s2">"D, corrected"</span><span class="p">][</span><span class="n">sp</span><span class="p">],</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">D_UNIT</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">sp</span> <span class="ow">in</span> <span class="n">species</span>
+            <span class="p">}</span>
+            <span class="n">dD</span> <span class="o">=</span> <span class="n">best</span><span class="p">[</span><span class="s2">"dD"</span><span class="p">]</span> <span class="k">if</span> <span class="n">best</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">([</span><span class="n">v</span><span class="p">[</span><span class="s2">"dD"</span><span class="p">]</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">values</span><span class="p">])</span>
+
+        <span class="n">sigma_components</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">s</span><span class="p">[</span><span class="s2">"sigma"</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">samples</span><span class="p">])</span>
+        <span class="n">D_components</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">sp</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">s</span><span class="p">[</span><span class="s2">"D"</span><span class="p">][</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">samples</span><span class="p">])</span> <span class="o">/</span> <span class="n">D_UNIT</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">sp</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">species</span><span class="p">)</span>
+        <span class="p">}</span>
+
+        <span class="c1"># The table</span>
+        <span class="n">D_units</span> <span class="o">=</span> <span class="s2">"10⁻⁹ m²/s"</span>
+        <span class="n">table</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"Property"</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">"Value"</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">"± (95%)"</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">"Units"</span><span class="p">:</span> <span class="p">[]}</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">row</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">units</span><span class="o">=</span><span class="s2">""</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Estimate</span><span class="p">):</span>
+                <span class="n">v</span><span class="p">,</span> <span class="n">e</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">formatted</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">v</span><span class="p">,</span> <span class="n">e</span> <span class="o">=</span> <span class="p">(</span><span class="s2">""</span> <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">value</span><span class="si">:</span><span class="s2">.4g</span><span class="si">}</span><span class="s2">"</span><span class="p">),</span> <span class="s2">""</span>
+            <span class="n">table</span><span class="p">[</span><span class="s2">"Property"</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+            <span class="n">table</span><span class="p">[</span><span class="s2">"Value"</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+            <span class="n">table</span><span class="p">[</span><span class="s2">"± (95%)"</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
             <span class="n">table</span><span class="p">[</span><span class="s2">"Units"</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">units</span><span class="p">)</span>
 
-        <span class="n">row</span><span class="p">(</span><span class="s2">"σ (Einstein-Helfand)"</span><span class="p">,</span> <span class="n">sigma</span><span class="p">,</span> <span class="n">stderr</span><span class="p">,</span> <span class="s2">"S/m"</span><span class="p">)</span>
-        <span class="n">row</span><span class="p">(</span><span class="s2">"σ (Nernst-Einstein)"</span><span class="p">,</span> <span class="n">sigma_ne</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">"S/m"</span><span class="p">)</span>
-        <span class="n">row</span><span class="p">(</span><span class="s2">"Ionicity σ/σ_NE"</span><span class="p">,</span> <span class="n">ionicity</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">""</span><span class="p">,</span> <span class="n">fmt</span><span class="o">=</span><span class="s2">".3f"</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">species</span><span class="p">:</span>
-            <span class="n">row</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">"D(</span><span class="si">{</span><span class="n">s</span><span class="si">}</span><span class="s2">)"</span><span class="p">,</span>
-                <span class="n">D</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="o">*</span> <span class="mf">1e9</span><span class="p">,</span>
-                <span class="kc">None</span> <span class="k">if</span> <span class="n">D_err</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">D_err</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="o">*</span> <span class="mf">1e9</span><span class="p">,</span>
-                <span class="s2">"1e-9 m^2/s"</span><span class="p">,</span>
-            <span class="p">)</span>
-            <span class="k">if</span> <span class="n">D_corrected</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">row</span><span class="p">(</span><span class="sa">f</span><span class="s2">"D(</span><span class="si">{</span><span class="n">s</span><span class="si">}</span><span class="s2">), corrected"</span><span class="p">,</span> <span class="n">D_corrected</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="o">*</span> <span class="mf">1e9</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">"1e-9 m^2/s"</span><span class="p">)</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">component</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">whole_value</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">values</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="k">if</span> <span class="n">whole_value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">whole_value</span><span class="p">)</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">Estimate</span><span class="o">.</span><span class="n">from_samples</span><span class="p">(</span><span class="n">values</span><span class="p">[:,</span> <span class="n">i</span><span class="p">],</span> <span class="n">source</span><span class="o">=</span><span class="n">source</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">whole_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">result</span><span class="o">.</span><span class="n">value</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">whole_value</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">result</span>
+
+        <span class="n">row</span><span class="p">(</span><span class="s2">"σ (Einstein-Helfand)"</span><span class="p">,</span> <span class="n">sigma</span><span class="p">,</span> <span class="s2">"S/m"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">isotropic</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">axis</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">AXES</span><span class="p">):</span>
+                <span class="n">row</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">"σ_</span><span class="si">{</span><span class="n">axis</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
+                    <span class="n">component</span><span class="p">(</span>
+                        <span class="n">sigma_components</span><span class="p">,</span>
+                        <span class="n">i</span><span class="p">,</span>
+                        <span class="kc">None</span> <span class="k">if</span> <span class="n">whole</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">whole</span><span class="p">[</span><span class="s2">"sigma"</span><span class="p">][</span><span class="n">i</span><span class="p">],</span>
+                    <span class="p">),</span>
+                    <span class="s2">"S/m"</span><span class="p">,</span>
+                <span class="p">)</span>
+        <span class="n">row</span><span class="p">(</span><span class="s2">"σ_NE (Nernst-Einstein), in the box"</span><span class="p">,</span> <span class="n">sigma_ne</span><span class="p">,</span> <span class="s2">"S/m"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">record</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">row</span><span class="p">(</span><span class="s2">"σ_NE (Nernst-Einstein), corrected"</span><span class="p">,</span> <span class="n">sigma_ne_c</span><span class="p">,</span> <span class="s2">"S/m"</span><span class="p">)</span>
+        <span class="n">row</span><span class="p">(</span><span class="s2">"Ionicity σ/σ_NE"</span><span class="p">,</span> <span class="n">ionicity</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">sp</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">species</span><span class="p">):</span>
+            <span class="n">row</span><span class="p">(</span><span class="sa">f</span><span class="s2">"D(</span><span class="si">{</span><span class="n">sp</span><span class="si">}</span><span class="s2">), in the box"</span><span class="p">,</span> <span class="n">D</span><span class="p">[</span><span class="n">sp</span><span class="p">],</span> <span class="n">D_units</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">isotropic</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">axis</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">AXES</span><span class="p">):</span>
+                    <span class="n">row</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">"D(</span><span class="si">{</span><span class="n">sp</span><span class="si">}</span><span class="s2">)_</span><span class="si">{</span><span class="n">axis</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
+                        <span class="n">component</span><span class="p">(</span>
+                            <span class="n">D_components</span><span class="p">[</span><span class="n">sp</span><span class="p">],</span>
+                            <span class="n">j</span><span class="p">,</span>
+                            <span class="kc">None</span> <span class="k">if</span> <span class="n">whole</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">whole</span><span class="p">[</span><span class="s2">"D"</span><span class="p">][</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">/</span> <span class="n">D_UNIT</span><span class="p">,</span>
+                        <span class="p">),</span>
+                        <span class="n">D_units</span><span class="p">,</span>
+                    <span class="p">)</span>
+            <span class="k">if</span> <span class="n">record</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">row</span><span class="p">(</span><span class="sa">f</span><span class="s2">"D(</span><span class="si">{</span><span class="n">sp</span><span class="si">}</span><span class="s2">), corrected"</span><span class="p">,</span> <span class="n">D_c</span><span class="p">[</span><span class="n">sp</span><span class="p">],</span> <span class="n">D_units</span><span class="p">)</span>
         <span class="n">text</span> <span class="o">=</span> <span class="n">tabulate</span><span class="p">(</span>
-            <span class="n">table</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="s2">"keys"</span><span class="p">,</span> <span class="n">tablefmt</span><span class="o">=</span><span class="s2">"simple_outline"</span><span class="p">,</span> <span class="n">disable_numparse</span><span class="o">=</span><span class="kc">True</span>
+            <span class="n">table</span><span class="p">,</span>
+            <span class="n">headers</span><span class="o">=</span><span class="s2">"keys"</span><span class="p">,</span>
+            <span class="n">tablefmt</span><span class="o">=</span><span class="s2">"rounded_outline"</span><span class="p">,</span>
+            <span class="n">disable_numparse</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">colalign</span><span class="o">=</span><span class="p">(</span><span class="s2">"left"</span><span class="p">,</span> <span class="s2">"decimal"</span><span class="p">,</span> <span class="s2">"decimal"</span><span class="p">,</span> <span class="s2">"left"</span><span class="p">),</span>
         <span class="p">)</span>
         <span class="n">length</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span>
         <span class="n">printer</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span>
@@ -1034,50 +1061,142 @@
                 <span class="n">dedent</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
             <span class="p">)</span>
         <span class="p">)</span>
-        <span class="n">how</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="sa">f</span><span class="s2">"the standard error over the </span><span class="si">{</span><span class="n">nruns</span><span class="si">}</span><span class="s2"> runs"</span>
-            <span class="k">if</span> <span class="n">nruns</span> <span class="o">&gt;</span> <span class="mi">1</span>
-            <span class="k">else</span> <span class="p">(</span>
-                <span class="sa">f</span><span class="s2">"from </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">pieces</span><span class="p">)</span><span class="si">}</span><span class="s2"> blocks of the run"</span>
-                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">pieces</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span>
-                <span class="k">else</span> <span class="s2">"no error estimate: use several runs or blocks"</span>
-            <span class="p">)</span>
-        <span class="p">)</span>
-        <span class="n">printer</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span>
-            <span class="n">__</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">"From </span><span class="si">{</span><span class="n">n_frames</span><span class="si">}</span><span class="s2"> frames of </span><span class="si">{</span><span class="n">nruns</span><span class="si">}</span><span class="s2"> run</span><span class="si">{</span><span class="s1">'s'</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">nruns</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">''</span><span class="si">}</span><span class="s2">, "</span>
-                <span class="sa">f</span><span class="s2">"every </span><span class="si">{</span><span class="n">dt</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2"> ps; the MSDs are fitted from </span><span class="si">{</span><span class="n">start</span><span class="si">:</span><span class="s2">.0%</span><span class="si">}</span><span class="s2"> to </span><span class="si">{</span><span class="n">end</span><span class="si">:</span><span class="s2">.0%</span><span class="si">}</span><span class="s2"> "</span>
-                <span class="sa">f</span><span class="s2">"of their length; the error is </span><span class="si">{</span><span class="n">how</span><span class="si">}</span><span class="s2">. The collective displacement "</span>
-                <span class="s2">"of the charges is noisy: long runs, or several, are needed."</span><span class="p">,</span>
-                <span class="n">indent</span><span class="o">=</span><span class="mi">8</span> <span class="o">*</span> <span class="s2">" "</span><span class="p">,</span>
-            <span class="p">)</span>
-        <span class="p">)</span>
-        <span class="k">for</span> <span class="n">note</span> <span class="ow">in</span> <span class="n">notes</span><span class="p">:</span>
-            <span class="n">printer</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">__</span><span class="p">(</span><span class="n">note</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">8</span> <span class="o">*</span> <span class="s2">" "</span><span class="p">))</span>
-        <span class="n">printer</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="s2">""</span><span class="p">)</span>
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">_plot</span><span class="p">(</span><span class="n">plot_ts</span><span class="p">,</span> <span class="n">plot_msd</span><span class="p">,</span> <span class="n">fit</span><span class="p">,</span> <span class="n">ts</span><span class="p">,</span> <span class="n">species</span><span class="p">,</span> <span class="n">species_msds</span><span class="p">)</span>
+        <span class="c1"># What the table means</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="sa">f</span><span class="s2">"From </span><span class="si">{</span><span class="n">n_frames</span><span class="si">}</span><span class="s2"> frames of </span><span class="si">{</span><span class="n">nruns</span><span class="si">}</span><span class="s2"> run</span><span class="si">{</span><span class="s1">'s'</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">nruns</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">''</span><span class="si">}</span><span class="s2">, every "</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">dt</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2"> ps, for </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">ions</span><span class="p">)</span><span class="si">}</span><span class="s2"> ions; the mean square displacements are "</span>
+            <span class="sa">f</span><span class="s2">"fitted from </span><span class="si">{</span><span class="n">start</span><span class="si">:</span><span class="s2">.0%</span><span class="si">}</span><span class="s2"> to </span><span class="si">{</span><span class="n">end</span><span class="si">:</span><span class="s2">.0%</span><span class="si">}</span><span class="s2"> of their length. "</span>
+            <span class="o">+</span> <span class="n">sigma</span><span class="o">.</span><span class="n">describe_error</span><span class="p">()</span>
+        <span class="p">]</span>
+        <span class="k">if</span> <span class="n">isotropic</span><span class="p">:</span>
+            <span class="n">check</span> <span class="o">=</span> <span class="n">component_check</span><span class="p">(</span><span class="n">sigma_components</span><span class="p">,</span> <span class="n">names</span><span class="o">=</span><span class="p">[</span><span class="s2">"σ_xx"</span><span class="p">,</span> <span class="s2">"σ_yy"</span><span class="p">,</span> <span class="s2">"σ_zz"</span><span class="p">])</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="s2">"σ and D are the averages of their x, y and z components. "</span>
+                <span class="o">+</span> <span class="n">check</span><span class="o">.</span><span class="n">text</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">"the components"</span><span class="p">,</span> <span class="s2">"the components of σ"</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">sp</span> <span class="ow">in</span> <span class="n">species</span><span class="p">:</span>
+                <span class="n">check</span> <span class="o">=</span> <span class="n">component_check</span><span class="p">(</span>
+                    <span class="n">D_components</span><span class="p">[</span><span class="n">sp</span><span class="p">],</span> <span class="n">names</span><span class="o">=</span><span class="p">[</span><span class="sa">f</span><span class="s2">"D(</span><span class="si">{</span><span class="n">sp</span><span class="si">}</span><span class="s2">)_</span><span class="si">{</span><span class="n">a</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">AXES</span><span class="p">]</span>
+                <span class="p">)</span>
+                <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="n">check</span><span class="o">.</span><span class="n">text</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span>
+                        <span class="s2">"the components"</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"the components of D(</span><span class="si">{</span><span class="n">sp</span><span class="si">}</span><span class="s2">)"</span><span class="p">,</span> <span class="mi">1</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"The run is not treated as isotropic (</span><span class="si">{</span><span class="n">why</span><span class="si">}</span><span class="s2">), so the diagonal "</span>
+                <span class="s2">"components are given; σ and D are the averages of their components."</span>
+            <span class="p">)</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="s2">"The collective displacement of the charges is noisy: long runs, or "</span>
+            <span class="s2">"several, are needed."</span>
+        <span class="p">)</span>
+        <span class="n">note</span> <span class="o">=</span> <span class="n">pairs_note</span><span class="p">(</span><span class="n">n_cations</span><span class="p">,</span> <span class="n">n_anions</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">note</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">notes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">note</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">record</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">eta</span> <span class="o">=</span> <span class="n">record</span><span class="p">[</span><span class="s2">"value"</span><span class="p">]</span> <span class="o">*</span> <span class="mi">1000</span>
+            <span class="n">eta_text</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">eta</span><span class="si">:</span><span class="s2">.4g</span><span class="si">}</span><span class="s2">"</span>
+            <span class="k">if</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"stderr"</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">eta_text</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">" ± </span><span class="si">{</span><span class="n">record</span><span class="p">[</span><span class="s1">'stderr'</span><span class="p">]</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">1000</span><span class="si">:</span><span class="s2">.2g</span><span class="si">}</span><span class="s2"> (standard error)"</span>
+            <span class="n">where</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"step </span><span class="si">{</span><span class="n">record</span><span class="p">[</span><span class="s1">'id'</span><span class="p">]</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">record</span><span class="p">[</span><span class="s1">'step'</span><span class="p">]</span><span class="si">}</span><span class="s2">)"</span>
+            <span class="k">if</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"method"</span><span class="p">):</span>
+                <span class="n">where</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">", </span><span class="si">{</span><span class="n">record</span><span class="p">[</span><span class="s1">'method'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span>
+            <span class="n">notes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="s2">"The self-diffusion coefficients are corrected for the size of the "</span>
+                <span class="sa">f</span><span class="s2">"cell (Yeh-Hummer): ΔD = </span><span class="si">{</span><span class="n">dD</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">D_UNIT</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2"> × </span><span class="si">{</span><span class="n">D_units</span><span class="si">}</span><span class="s2">, with the "</span>
+                <span class="sa">f</span><span class="s2">"viscosity η = </span><span class="si">{</span><span class="n">eta_text</span><span class="si">}</span><span class="s2"> mPa·s from </span><span class="si">{</span><span class="n">where</span><span class="si">}</span><span class="s2">. σ_NE, corrected, is "</span>
+                <span class="s2">"from the corrected coefficients, and the ionicity uses it. The "</span>
+                <span class="s2">"errors of the corrected values do not include that of the viscosity."</span>
+            <span class="p">)</span>
+            <span class="n">T_eta</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"T"</span><span class="p">)</span>
+            <span class="n">T_run</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">([</span><span class="n">r</span><span class="p">[</span><span class="s2">"T"</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">runs</span><span class="p">]))</span>
+            <span class="k">if</span> <span class="n">T_eta</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">abs</span><span class="p">(</span><span class="n">T_eta</span> <span class="o">-</span> <span class="n">T_run</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mf">2.0</span><span class="p">:</span>
+                <span class="n">notes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">"The viscosity is for </span><span class="si">{</span><span class="n">T_eta</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> K but the MD here is at "</span>
+                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">T_run</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> K, so the correction is approximate."</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">isotropic</span><span class="p">:</span>
+                <span class="n">notes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="s2">"The Yeh-Hummer correction is for a cubic cell, so it is "</span>
+                    <span class="s2">"approximate here."</span>
+                <span class="p">)</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span> <span class="o">+</span> <span class="n">notes</span><span class="p">:</span>
+            <span class="n">printer</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">__</span><span class="p">(</span><span class="n">line</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">8</span> <span class="o">*</span> <span class="s2">" "</span><span class="p">))</span>
+        <span class="n">printer</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="s2">""</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_print_samples</span><span class="p">(</span><span class="n">samples</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">species</span><span class="p">,</span> <span class="n">source</span><span class="p">)</span>
+
+        <span class="n">state</span> <span class="o">=</span> <span class="n">report_state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">printer</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">)</span>
+
+        <span class="c1"># The graph: the whole run, or the average of the runs</span>
+        <span class="k">if</span> <span class="n">whole</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">plot_msd</span> <span class="o">=</span> <span class="n">whole</span><span class="p">[</span><span class="s2">"msd"</span><span class="p">]</span>
+            <span class="n">plot_species</span> <span class="o">=</span> <span class="n">whole</span><span class="p">[</span><span class="s2">"species msd"</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">plot_msd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">([</span><span class="n">s</span><span class="p">[</span><span class="s2">"msd"</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">samples</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">plot_species</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">([</span><span class="n">s</span><span class="p">[</span><span class="s2">"species msd"</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">samples</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">plot_ts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">plot_msd</span><span class="p">))</span> <span class="o">*</span> <span class="n">dt</span>
+        <span class="n">V</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">([</span><span class="n">r</span><span class="p">[</span><span class="s2">"V"</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">runs</span><span class="p">]))</span>
+        <span class="n">T</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">([</span><span class="n">r</span><span class="p">[</span><span class="s2">"T"</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">runs</span><span class="p">]))</span>
+        <span class="n">fit</span> <span class="o">=</span> <span class="n">conductivity_from_msd</span><span class="p">(</span><span class="n">plot_msd</span><span class="p">,</span> <span class="n">dt</span><span class="p">,</span> <span class="n">V</span><span class="p">,</span> <span class="n">T</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">end</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_plot</span><span class="p">(</span><span class="n">plot_ts</span><span class="p">,</span> <span class="n">plot_msd</span><span class="p">,</span> <span class="n">fit</span><span class="p">,</span> <span class="n">species</span><span class="p">,</span> <span class="n">plot_species</span><span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_model</span><span class="p">()</span>
         <span class="n">data</span> <span class="o">=</span> <span class="p">{</span>
-            <span class="s2">"sigma"</span><span class="p">:</span> <span class="n">sigma</span><span class="p">,</span>
-            <span class="s2">"sigma_NE"</span><span class="p">:</span> <span class="n">sigma_ne</span><span class="p">,</span>
-            <span class="s2">"D"</span><span class="p">:</span> <span class="n">D</span><span class="p">,</span>
-            <span class="s2">"T"</span><span class="p">:</span> <span class="n">T</span><span class="p">,</span>
-            <span class="s2">"V"</span><span class="p">:</span> <span class="n">V</span><span class="p">,</span>
+            <span class="s2">"sigma"</span><span class="p">:</span> <span class="n">sigma</span><span class="o">.</span><span class="n">value</span><span class="p">,</span>
+            <span class="s2">"sigma_NE"</span><span class="p">:</span> <span class="n">sigma_ne</span><span class="o">.</span><span class="n">value</span><span class="p">,</span>
+            <span class="s2">"D"</span><span class="p">:</span> <span class="p">{</span><span class="n">sp</span><span class="p">:</span> <span class="n">D</span><span class="p">[</span><span class="n">sp</span><span class="p">]</span><span class="o">.</span><span class="n">value</span> <span class="o">*</span> <span class="n">D_UNIT</span> <span class="k">for</span> <span class="n">sp</span> <span class="ow">in</span> <span class="n">species</span><span class="p">},</span>
             <span class="s2">"nruns"</span><span class="p">:</span> <span class="n">nruns</span><span class="p">,</span>
             <span class="s2">"n_frames"</span><span class="p">:</span> <span class="n">n_frames</span><span class="p">,</span>
         <span class="p">}</span>
-        <span class="k">if</span> <span class="n">stderr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">data</span><span class="p">[</span><span class="s2">"sigma,stderr"</span><span class="p">]</span> <span class="o">=</span> <span class="n">stderr</span>
-        <span class="k">if</span> <span class="n">ionicity</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">data</span><span class="p">[</span><span class="s2">"ionicity"</span><span class="p">]</span> <span class="o">=</span> <span class="n">ionicity</span>
-        <span class="k">if</span> <span class="n">D_corrected</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">data</span><span class="p">[</span><span class="s2">"D, corrected"</span><span class="p">]</span> <span class="o">=</span> <span class="n">D_corrected</span>
+        <span class="k">if</span> <span class="n">sigma</span><span class="o">.</span><span class="n">stderr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">"sigma,stderr"</span><span class="p">]</span> <span class="o">=</span> <span class="n">sigma</span><span class="o">.</span><span class="n">stderr</span>
+        <span class="k">if</span> <span class="n">sigma_ne</span><span class="o">.</span><span class="n">stderr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">"sigma_NE,stderr"</span><span class="p">]</span> <span class="o">=</span> <span class="n">sigma_ne</span><span class="o">.</span><span class="n">stderr</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">ionicity</span><span class="o">.</span><span class="n">value</span><span class="p">):</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">"ionicity"</span><span class="p">]</span> <span class="o">=</span> <span class="n">ionicity</span><span class="o">.</span><span class="n">value</span>
+            <span class="k">if</span> <span class="n">ionicity</span><span class="o">.</span><span class="n">stderr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">data</span><span class="p">[</span><span class="s2">"ionicity,stderr"</span><span class="p">]</span> <span class="o">=</span> <span class="n">ionicity</span><span class="o">.</span><span class="n">stderr</span>
+        <span class="k">if</span> <span class="nb">all</span><span class="p">(</span><span class="n">D</span><span class="p">[</span><span class="n">sp</span><span class="p">]</span><span class="o">.</span><span class="n">stderr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">sp</span> <span class="ow">in</span> <span class="n">species</span><span class="p">):</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">"D,stderr"</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="n">sp</span><span class="p">:</span> <span class="n">D</span><span class="p">[</span><span class="n">sp</span><span class="p">]</span><span class="o">.</span><span class="n">stderr</span> <span class="o">*</span> <span class="n">D_UNIT</span> <span class="k">for</span> <span class="n">sp</span> <span class="ow">in</span> <span class="n">species</span><span class="p">}</span>
+        <span class="k">if</span> <span class="n">record</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">"D, corrected"</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="n">sp</span><span class="p">:</span> <span class="n">D_c</span><span class="p">[</span><span class="n">sp</span><span class="p">]</span><span class="o">.</span><span class="n">value</span> <span class="o">*</span> <span class="n">D_UNIT</span> <span class="k">for</span> <span class="n">sp</span> <span class="ow">in</span> <span class="n">species</span><span class="p">}</span>
+            <span class="n">data</span><span class="p">[</span><span class="s2">"sigma_NE, corrected"</span><span class="p">]</span> <span class="o">=</span> <span class="n">sigma_ne_c</span><span class="o">.</span><span class="n">value</span>
+        <span class="k">if</span> <span class="n">state</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">data</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">state_data</span><span class="p">(</span><span class="n">state</span><span class="p">))</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">store_results</span><span class="p">(</span><span class="n">configuration</span><span class="o">=</span><span class="n">configuration</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="p">)</span></div>
 
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_plot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ts</span><span class="p">,</span> <span class="n">msd</span><span class="p">,</span> <span class="n">fit</span><span class="p">,</span> <span class="n">species_ts</span><span class="p">,</span> <span class="n">species</span><span class="p">,</span> <span class="n">species_msds</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_print_samples</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">samples</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">species</span><span class="p">,</span> <span class="n">source</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""The values of each run or block, in the detailed output."""</span>
+        <span class="n">what</span> <span class="o">=</span> <span class="s2">"Run"</span> <span class="k">if</span> <span class="n">source</span> <span class="o">==</span> <span class="s2">"runs"</span> <span class="k">else</span> <span class="s2">"Block"</span>
+        <span class="n">table</span> <span class="o">=</span> <span class="p">{</span><span class="n">what</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">"σ"</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">"σ_xx"</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">"σ_yy"</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">"σ_zz"</span><span class="p">:</span> <span class="p">[]}</span>
+        <span class="k">for</span> <span class="n">sp</span> <span class="ow">in</span> <span class="n">species</span><span class="p">:</span>
+            <span class="n">table</span><span class="p">[</span><span class="sa">f</span><span class="s2">"D(</span><span class="si">{</span><span class="n">sp</span><span class="si">}</span><span class="s2">)"</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">samples</span><span class="p">,</span> <span class="n">values</span><span class="p">),</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+            <span class="n">table</span><span class="p">[</span><span class="n">what</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+            <span class="n">table</span><span class="p">[</span><span class="s2">"σ"</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">v</span><span class="p">[</span><span class="s1">'sigma'</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">axis</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">AXES</span><span class="p">,</span> <span class="n">s</span><span class="p">[</span><span class="s2">"sigma"</span><span class="p">]):</span>
+                <span class="n">table</span><span class="p">[</span><span class="sa">f</span><span class="s2">"σ_</span><span class="si">{</span><span class="n">axis</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">value</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">sp</span> <span class="ow">in</span> <span class="n">species</span><span class="p">:</span>
+                <span class="n">table</span><span class="p">[</span><span class="sa">f</span><span class="s2">"D(</span><span class="si">{</span><span class="n">sp</span><span class="si">}</span><span class="s2">)"</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">v</span><span class="p">[</span><span class="s1">'D'</span><span class="p">][</span><span class="n">sp</span><span class="p">]</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">D_UNIT</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="n">tabulate</span><span class="p">(</span>
+            <span class="n">table</span><span class="p">,</span>
+            <span class="n">headers</span><span class="o">=</span><span class="s2">"keys"</span><span class="p">,</span>
+            <span class="n">tablefmt</span><span class="o">=</span><span class="s2">"rounded_outline"</span><span class="p">,</span>
+            <span class="n">disable_numparse</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">colalign</span><span class="o">=</span><span class="p">(</span><span class="s2">"center"</span><span class="p">,)</span> <span class="o">+</span> <span class="p">(</span><span class="s2">"decimal"</span><span class="p">,)</span> <span class="o">*</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">table</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">length</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">title</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"By </span><span class="si">{</span><span class="n">what</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="si">}</span><span class="s2">: σ in S/m, D in 10⁻⁹ m²/s"</span><span class="o">.</span><span class="n">center</span><span class="p">(</span><span class="n">length</span><span class="p">)</span>
+        <span class="n">print_details</span><span class="p">(</span>
+            <span class="n">printer</span><span class="p">,</span>
+            <span class="nb">str</span><span class="p">(</span><span class="n">__</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span> <span class="o">+</span> <span class="n">title</span> <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span> <span class="o">+</span> <span class="n">text</span> <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">8</span> <span class="o">*</span> <span class="s2">" "</span><span class="p">,</span> <span class="n">wrap</span><span class="o">=</span><span class="kc">False</span><span class="p">)),</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_plot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ts</span><span class="p">,</span> <span class="n">msd</span><span class="p">,</span> <span class="n">fit</span><span class="p">,</span> <span class="n">species</span><span class="p">,</span> <span class="n">species_msds</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""The collective MSD of the charges with its fit, and the ions' MSDs."""</span>
         <span class="n">figure</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_figure</span><span class="p">(</span>
             <span class="n">module_path</span><span class="o">=</span><span class="p">(</span><span class="s2">"seamm"</span><span class="p">,),</span>
@@ -1116,13 +1235,12 @@
         <span class="n">x2</span> <span class="o">=</span> <span class="n">plot2</span><span class="o">.</span><span class="n">add_axis</span><span class="p">(</span><span class="s2">"x"</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">"Time (ps)"</span><span class="p">)</span>
         <span class="n">y2</span> <span class="o">=</span> <span class="n">plot2</span><span class="o">.</span><span class="n">add_axis</span><span class="p">(</span><span class="s2">"y"</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">"MSD (Å^2)"</span><span class="p">,</span> <span class="n">anchor</span><span class="o">=</span><span class="n">x2</span><span class="p">)</span>
         <span class="n">x2</span><span class="o">.</span><span class="n">anchor</span> <span class="o">=</span> <span class="n">y2</span>
-        <span class="n">mean</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">([[</span><span class="n">m</span><span class="p">[:,</span> <span class="mi">3</span><span class="p">]</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">run</span><span class="p">]</span> <span class="k">for</span> <span class="n">run</span> <span class="ow">in</span> <span class="n">species_msds</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">m</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">species</span><span class="p">,</span> <span class="n">mean</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">m</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">species</span><span class="p">,</span> <span class="n">species_msds</span><span class="p">):</span>
             <span class="n">plot2</span><span class="o">.</span><span class="n">add_trace</span><span class="p">(</span>
                 <span class="n">x_axis</span><span class="o">=</span><span class="n">x2</span><span class="p">,</span>
                 <span class="n">y_axis</span><span class="o">=</span><span class="n">y2</span><span class="p">,</span>
                 <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
-                <span class="n">x</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="n">species_ts</span><span class="p">),</span>
+                <span class="n">x</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="n">ts</span><span class="p">),</span>
                 <span class="n">xlabel</span><span class="o">=</span><span class="s2">"t"</span><span class="p">,</span>
                 <span class="n">xunits</span><span class="o">=</span><span class="s2">"ps"</span><span class="p">,</span>
                 <span class="n">y</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="n">m</span><span class="p">),</span>
@@ -1153,7 +1271,7 @@
 <a class="viewcode-back" href="../../api/ionic_conductivity_step.html#ionic_conductivity_step.ionic_conductivity.IonicConductivity.md_requirements">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">md_requirements</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">P</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""What the analysis needs from the MD: positions every ps or so, in a</span>
-<span class="sd">        periodic cell."""</span>
+<span class="sd">        periodic cell, from dynamics that are not perturbed."""</span>
         <span class="n">interval</span> <span class="o">=</span> <span class="p">(</span>
             <span class="n">P</span><span class="p">[</span><span class="s2">"frame interval"</span><span class="p">]</span> <span class="k">if</span> <span class="n">P</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_static</span><span class="p">(</span><span class="s2">"frame interval"</span><span class="p">)</span>
         <span class="p">)</span>
@@ -1170,6 +1288,7 @@
                 <span class="p">)</span>
             <span class="p">],</span>
             <span class="n">periodic</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">dynamics</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
         <span class="p">)</span></div>
 
 
@@ -1183,48 +1302,65 @@
 <div class="viewcode-block" id="IonicConductivity.check_flowchart">
 <a class="viewcode-back" href="../../api/ionic_conductivity_step.html#ionic_conductivity_step.ionic_conductivity.IonicConductivity.check_flowchart">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">check_flowchart</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">preceding</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""Check, before the job runs, that the MD will sample what is needed."""</span>
+<span class="w">        </span><span class="sd">"""Check, before the job runs, that the MD will sample what is needed and is</span>
+<span class="sd">        set up for the analysis."""</span>
         <span class="n">source</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_static</span><span class="p">(</span><span class="s2">"md source"</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">source</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="p">[]</span>
         <span class="k">return</span> <span class="n">check_md_flowchart</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">preceding</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">md_requirements</span><span class="p">(),</span> <span class="n">source</span><span class="p">)</span></div>
 
 
+    <span class="k">def</span><span class="w"> </span><span class="nf">_structure_charges</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">configuration</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""The charges of the atoms known before the MD runs, or None.</span>
+
+<span class="sd">        These are the forcefield's charges, once the atoms are typed (the column</span>
+<span class="sd">        ``charges_&lt;forcefield&gt;``), or else the formal charges.</span>
+<span class="sd">        """</span>
+        <span class="n">atoms</span> <span class="o">=</span> <span class="n">configuration</span><span class="o">.</span><span class="n">atoms</span>
+        <span class="n">keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">atoms</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"charges_"</span><span class="p">)]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">key</span> <span class="o">=</span> <span class="n">keys</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">ff</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_variable</span><span class="p">(</span><span class="s2">"_forcefield"</span><span class="p">)</span>
+                <span class="k">if</span> <span class="sa">f</span><span class="s2">"charges_</span><span class="si">{</span><span class="n">ff</span><span class="o">.</span><span class="n">current_forcefield</span><span class="si">}</span><span class="s2">"</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">:</span>
+                    <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"charges_</span><span class="si">{</span><span class="n">ff</span><span class="o">.</span><span class="n">current_forcefield</span><span class="si">}</span><span class="s2">"</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_column_data</span><span class="p">(</span><span class="n">key</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s2">"formal_charge"</span> <span class="ow">in</span> <span class="n">atoms</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_column_data</span><span class="p">(</span><span class="s2">"formal_charge"</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
 <div class="viewcode-block" id="IonicConductivity.check_configuration">
 <a class="viewcode-back" href="../../api/ionic_conductivity_step.html#ionic_conductivity_step.ionic_conductivity.IonicConductivity.check_configuration">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">check_configuration</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">configuration</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""Called by an MD step before it runs MD that this step will analyze."""</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_static</span><span class="p">(</span><span class="s2">"md source"</span><span class="p">)</span> <span class="o">==</span> <span class="n">run_own_md</span><span class="p">:</span>
-            <span class="k">return</span>
+<span class="w">        </span><span class="sd">"""Called by an MD step before it runs MD that this step will analyze.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        [str]</span>
+<span class="sd">            Warnings about the structure, e.g. that it is small or has too few ions.</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="n">configuration</span><span class="o">.</span><span class="n">periodicity</span> <span class="o">!=</span> <span class="mi">3</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
                 <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="s2">' will analyze the MD, but the system is not "</span>
                 <span class="s2">"periodic: a conductivity is a property of the bulk."</span>
-            <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="IonicConductivity.set_id">
-<a class="viewcode-back" href="../../api/ionic_conductivity_step.html#ionic_conductivity_step.ionic_conductivity.IonicConductivity.set_id">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">set_id</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_id</span><span class="o">=</span><span class="p">()):</span>
-<span class="w">        </span><span class="sd">"""Sequentially number the subnodes"""</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">visited</span><span class="p">:</span>
-            <span class="k">return</span> <span class="kc">None</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">visited</span> <span class="o">=</span> <span class="kc">True</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_id</span> <span class="o">=</span> <span class="n">node_id</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">set_subids</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_id</span><span class="p">)</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">next</span><span class="p">()</span></div>
-
-
-<div class="viewcode-block" id="IonicConductivity.set_subids">
-<a class="viewcode-back" href="../../api/ionic_conductivity_step.html#ionic_conductivity_step.ionic_conductivity.IonicConductivity.set_subids">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">set_subids</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_id</span><span class="o">=</span><span class="p">()):</span>
-<span class="w">        </span><span class="sd">"""Set the ids of the nodes in the subflowchart"""</span>
-        <span class="n">node</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">subflowchart</span><span class="o">.</span><span class="n">get_node</span><span class="p">(</span><span class="s2">"1"</span><span class="p">)</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
-        <span class="n">n</span> <span class="o">=</span> <span class="mi">1</span>
-        <span class="k">while</span> <span class="n">node</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">node</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="n">set_id</span><span class="p">((</span><span class="o">*</span><span class="n">node_id</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">n</span><span class="p">)))</span>
-            <span class="n">n</span> <span class="o">+=</span> <span class="mi">1</span></div>
+            <span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">size_warnings</span><span class="p">(</span><span class="n">configuration</span><span class="p">)</span>
+        <span class="n">charges</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_structure_charges</span><span class="p">(</span><span class="n">configuration</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">charges</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">molecules</span> <span class="o">=</span> <span class="n">configuration</span><span class="o">.</span><span class="n">find_molecules</span><span class="p">(</span><span class="n">as_indices</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="n">n_cations</span><span class="p">,</span> <span class="n">n_anions</span> <span class="o">=</span> <span class="n">count_ions</span><span class="p">(</span><span class="n">charges</span><span class="p">,</span> <span class="n">molecules</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">n_cations</span> <span class="o">+</span> <span class="n">n_anions</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="s2">"There are no ions, so there will be no ionic conductivity to "</span>
+                    <span class="s2">"calculate."</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">note</span> <span class="o">=</span> <span class="n">pairs_note</span><span class="p">(</span><span class="n">n_cations</span><span class="p">,</span> <span class="n">n_anions</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">note</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">note</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="s2">': </span><span class="si">{</span><span class="n">w</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">result</span><span class="p">]</span></div>
 </div>
 
 </pre></div>

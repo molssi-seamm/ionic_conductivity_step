@@ -6,7 +6,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ionic_conductivity_step.ionic_conductivity_parameters &#8212; SEAMM Ionic Conductivity Plug-in 2026.10.17 documentation</title>
+    <title>ionic_conductivity_step.ionic_conductivity_parameters &#8212; SEAMM Ionic Conductivity Plug-in 2026.10.17.1 documentation</title>
   
   
   
@@ -39,7 +39,7 @@
   <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=18bd87630a240e9c25be" />
 <link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=18bd87630a240e9c25be" />
 
-    <script src="../../_static/documentation_options.js?v=fed69469"></script>
+    <script src="../../_static/documentation_options.js?v=62bfd45e"></script>
     <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -52,7 +52,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="2026.10.17" />
+  <meta name="docsearch:version" content="2026.10.17.1" />
   
     
     <script src="../../_static/searchtools.js"></script>
@@ -498,7 +498,7 @@
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">seamm</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">seamm_md_analysis.step_support</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_own_md</span><span class="p">,</span> <span class="n">source_parameters</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">seamm_md_analysis.step_support</span><span class="w"> </span><span class="kn">import</span> <span class="n">source_parameters</span>
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
 
@@ -509,37 +509,15 @@
 <span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    The control parameters for Ionic Conductivity.</span>
 
-<span class="sd">    The MD to analyze comes either from this step's sub-flowchart, run several</span>
-<span class="sd">    times as independent runs, or from MD run earlier in the flowchart or in other</span>
-<span class="sd">    jobs (see seamm_md_analysis.step_support.source_parameters).</span>
+<span class="sd">    The MD to analyze is run earlier in the flowchart -- in a Loop for independent</span>
+<span class="sd">    runs -- or in other jobs (see seamm_md_analysis.step_support.source_parameters).</span>
 <span class="sd">    """</span>
+
+    <span class="c1"># Dropped with the own-MD route (phase 8): ignored in older flowcharts</span>
+    <span class="n">retired</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"nruns"</span><span class="p">,</span> <span class="s2">"errors"</span><span class="p">)</span>
 
     <span class="n">parameters</span> <span class="o">=</span> <span class="p">{</span>
         <span class="o">**</span><span class="n">source_parameters</span><span class="p">(</span><span class="s2">"the ionic conductivity"</span><span class="p">),</span>
-        <span class="s2">"nruns"</span><span class="p">:</span> <span class="p">{</span>
-            <span class="s2">"default"</span><span class="p">:</span> <span class="s2">"5"</span><span class="p">,</span>
-            <span class="s2">"kind"</span><span class="p">:</span> <span class="s2">"integer"</span><span class="p">,</span>
-            <span class="s2">"default_units"</span><span class="p">:</span> <span class="s2">""</span><span class="p">,</span>
-            <span class="s2">"enumeration"</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">(),</span>
-            <span class="s2">"format_string"</span><span class="p">:</span> <span class="s2">""</span><span class="p">,</span>
-            <span class="s2">"description"</span><span class="p">:</span> <span class="s2">"Number of runs to average:"</span><span class="p">,</span>
-            <span class="s2">"help_text"</span><span class="p">:</span> <span class="s2">"The number of independent MD runs to average."</span><span class="p">,</span>
-            <span class="s2">"applies_when"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"md source"</span><span class="p">:</span> <span class="n">run_own_md</span><span class="p">},</span>
-        <span class="p">},</span>
-        <span class="s2">"errors"</span><span class="p">:</span> <span class="p">{</span>
-            <span class="s2">"default"</span><span class="p">:</span> <span class="s2">"continue to next run"</span><span class="p">,</span>
-            <span class="s2">"kind"</span><span class="p">:</span> <span class="s2">"string"</span><span class="p">,</span>
-            <span class="s2">"default_units"</span><span class="p">:</span> <span class="s2">""</span><span class="p">,</span>
-            <span class="s2">"enumeration"</span><span class="p">:</span> <span class="p">(</span>
-                <span class="s2">"continue to next run"</span><span class="p">,</span>
-                <span class="s2">"exit the loop"</span><span class="p">,</span>
-                <span class="s2">"stop the job"</span><span class="p">,</span>
-            <span class="p">),</span>
-            <span class="s2">"format_string"</span><span class="p">:</span> <span class="s2">""</span><span class="p">,</span>
-            <span class="s2">"description"</span><span class="p">:</span> <span class="s2">"On errors"</span><span class="p">,</span>
-            <span class="s2">"help_text"</span><span class="p">:</span> <span class="s2">"What to do if a run of the MD fails."</span><span class="p">,</span>
-            <span class="s2">"applies_when"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"md source"</span><span class="p">:</span> <span class="n">run_own_md</span><span class="p">},</span>
-        <span class="p">},</span>
         <span class="s2">"frame interval"</span><span class="p">:</span> <span class="p">{</span>
             <span class="s2">"default"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>
             <span class="s2">"kind"</span><span class="p">:</span> <span class="s2">"float"</span><span class="p">,</span>
