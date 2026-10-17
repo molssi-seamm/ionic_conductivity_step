@@ -37,6 +37,7 @@ from seamm_md_analysis.transport import (
 )
 from seamm_md_analysis.requirements import Need, Requirements
 from seamm_md_analysis.step_support import (
+    print_details,
     check_md_flowchart,
     preceding_viscosity,
     md_inputs,
@@ -674,8 +675,9 @@ class IonicConductivity(seamm.Node):
         )
         length = len(text.splitlines()[0])
         title = f"By {what.lower()}: σ in S/m, D in 10⁻⁹ m²/s".center(length)
-        printer.verbose(
-            __("\n" + title + "\n" + text + "\n", indent=8 * " ", wrap=False)
+        print_details(
+            printer,
+            str(__("\n" + title + "\n" + text + "\n", indent=8 * " ", wrap=False)),
         )
 
     def _plot(self, ts, msd, fit, species, species_msds):
