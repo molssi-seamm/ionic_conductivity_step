@@ -90,6 +90,8 @@ def test_no_ions_skipped(configuration, monkeypatch):
     config, charges = configuration(4)
 
     class FakeMD:
+        ion_charge_scale = 1.0
+
         def charges(self, name):
             return charges
 
@@ -113,6 +115,20 @@ def test_no_ions_skipped(configuration, monkeypatch):
     node.analyze(P=P, configuration=config)
     assert stored == []
     assert any("There are no ions" in t and "skipped" in t for t in printed)
+
+
+def test_scaled_ions(configuration):
+    """Ions whose charges were scaled in the MD are still found, with their formal
+    charges."""
+    config, charges = configuration(3, 2, 2)
+    scaled = charges.copy()
+    scaled[9:] *= 0.8
+    node = ionic_conductivity_step.IonicConductivity()
+    ions, names, z = node._ions(config, scaled)
+    assert ions == []
+    ions, names, z = node._ions(config, scaled, scale=0.8)
+    assert names == ["Na", "Na", "Cl", "Cl"]
+    assert z == {"Na": 1, "Cl": -1}
 
 
 def test_check_configuration_ion_pairs(configuration):

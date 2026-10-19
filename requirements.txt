@@ -1,7 +1,7 @@
 MDAnalysis>=2.8
 numpy
 seamm>=2026.10.17.1
-seamm-md-analysis[structure]>=2026.10.17.4
+seamm-md-analysis[structure]>=2026.10.19
 seamm-util
 seamm-widgets
 tabulate

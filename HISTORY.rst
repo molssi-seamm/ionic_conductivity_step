@@ -1,6 +1,13 @@
 =======
 History
 =======
+2026.10.19 -- Scaled ion charges
+    * The ions of MD with scaled charges (LAMMPS's 'Scale the charges of ions by', e.g.
+      0.8) were not recognized, since their charges are not integers. They are now
+      found from their formal charges, and the Nernst-Einstein conductivity uses the
+      charges the ions carried in the MD, like the Einstein-Helfand one, so that the
+      ionicity compares like with like.
+
 2026.10.17.1 -- Analyze MD run before the step; labelled errors; no ions skipped
     * The step analyzes MD run before it in the flowchart -- the runs of a Loop around
       the MD, as independent replicas ("the last MD run of each loop iteration", the
