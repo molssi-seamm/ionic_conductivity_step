@@ -318,11 +318,12 @@ class IonicConductivity(seamm.Node):
             "T": T,
         }
 
-    def _ions(self, configuration, charges):
-        """The ions in the structure, from the charges of the MD."""
+    def _ions(self, configuration, charges, scale=1.0):
+        """The ions in the structure, from the charges of the MD, and their formal
+        charges. ``scale`` is the factor the charges of the ions were scaled by."""
         molecules = configuration.find_molecules(as_indices=True)
         symbols = configuration.atoms.symbols
-        classes = classify_molecules(charges, molecules)
+        classes = classify_molecules(charges, molecules, scale=scale)
         ions = [np.array(molecules[m]) for m in classes["ions"]]
         names = [hill_formula([symbols[i] for i in m]) for m in ions]
         z = {name: int(classes["z"][m]) for name, m in zip(names, classes["ions"])}
@@ -336,6 +337,7 @@ class IonicConductivity(seamm.Node):
         with open_md(self.paths[0]) as md:
             charges = md.charges("all")
             masses = md.masses("all")
+            scale = md.ion_charge_scale
         if charges is None:
             raise RuntimeError(
                 f"'{self.title}': the MD has no fixed charges, as with a "
@@ -344,7 +346,7 @@ class IonicConductivity(seamm.Node):
         charges = np.asarray(charges, dtype=float)
         masses = np.asarray(masses, dtype=float)
 
-        ions, names, z = self._ions(configuration, charges)
+        ions, names, z = self._ions(configuration, charges, scale)
         if len(ions) == 0:
             printer.normal(
                 __(
@@ -363,14 +365,17 @@ class IonicConductivity(seamm.Node):
         ion_charges = charges[ion_atoms]
         n_cations = sum(counts[s] for s in species if z[s] > 0)
         n_anions = sum(counts[s] for s in species if z[s] < 0)
-        printer.normal(
-            __(
-                "The ions: "
-                + ", ".join(f"{counts[s]} {s} ({z[s]:+d})" for s in species)
-                + ".",
-                indent=self.indent + 4 * " ",
+        text = "The ions: " + ", ".join(f"{counts[s]} {s} ({z[s]:+d})" for s in species)
+        if scale != 1.0:
+            text += (
+                f". Their charges were scaled by {scale:g} in the MD, so they carry "
+                f"{scale:g} times their formal charges, and both conductivities are "
+                "those of this scaled-charge model"
             )
-        )
+        printer.normal(__(text + ".", indent=self.indent + 4 * " "))
+        # The charges the ions carry in the MD, for Nernst-Einstein as for the
+        # collective displacement of the charges
+        q = {s: z[s] * scale for s in species}
 
         runs = [
             self._read(p, configuration, ion_atoms, ion_charges, ions, masses)
@@ -430,14 +435,14 @@ class IonicConductivity(seamm.Node):
             result = {"sigma": float(s["sigma"].mean())}
             D = {sp: float(d.mean()) for sp, d in zip(species, s["D"])}
             result["D"] = D
-            result["sigma_NE"] = nernst_einstein(D, counts, z, s["V"], s["T"])
+            result["sigma_NE"] = nernst_einstein(D, counts, q, s["V"], s["T"])
             used = result["sigma_NE"]
             if record is not None:
                 L = s["V"] ** (1 / 3) * 1.0e-10
                 result["dD"] = yeh_hummer_correction(s["T"], L, record["value"])
                 result["D, corrected"] = {sp: d + result["dD"] for sp, d in D.items()}
                 result["sigma_NE, corrected"] = nernst_einstein(
-                    result["D, corrected"], counts, z, s["V"], s["T"]
+                    result["D, corrected"], counts, q, s["V"], s["T"]
                 )
                 used = result["sigma_NE, corrected"]
             result["ionicity"] = result["sigma"] / used if used > 0 else float("nan")
