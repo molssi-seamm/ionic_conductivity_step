@@ -24,6 +24,8 @@ from seamm_md_analysis import (
     open_md,
 )
 from seamm_md_analysis.electric import (
+    E,
+    KB,
     cell_dipole,
     classify_molecules,
     conductivity_from_msd,
@@ -77,6 +79,80 @@ A2_PER_PS = 1.0e-8
 #: The unit of the self-diffusion coefficients in the output, m²/s
 D_UNIT = 1.0e-9
 AXES = ("xx", "yy", "zz")
+#: Avogadro's number, for the Onsager coefficients per mole
+NA = 6.02214076e23
+#: The unit of the Onsager coefficients in the output, mol²/(J·m·s)
+L_UNIT = 1.0e-10
+L_UNITS = "10⁻¹⁰ mol²/(J·m·s)"
+#: The heading of the columns of errors
+PM = "± (95%)"
+
+
+def onsager_coefficients(X, dt, volume, temperature, start=0.1, end=0.5):
+    """The Onsager transport coefficients of the ionic species, by component.
+
+    .. math::
+
+        L_{ab} = \\lim_{t\\to\\infty} \\frac{\\langle \\Delta X_a(t) \\cdot
+        \\Delta X_b(t) \\rangle}{6 V k_B T t}
+
+    with :math:`X_a` the sum of the centres of mass of the molecules of species a.
+    The cross terms come from the displacements of :math:`X_a + X_b`:
+    :math:`\\Delta X_a \\Delta X_b = [\\Delta(X_a + X_b)^2 - \\Delta X_a^2 -
+    \\Delta X_b^2] / 2`. The conductivity is :math:`\\sigma = e^2 \\sum_{ab} q_a q_b
+    L_{ab}`.
+
+    Parameters
+    ----------
+    X : numpy.ndarray(n, k, 3)
+        The collective position of each of the k species in each frame, Å.
+    dt : float
+        The interval between frames, ps.
+    volume : float
+        The volume of the cell, Å³.
+    temperature : float
+        The temperature, K.
+    start, end : float
+        The part of the curves fitted, as fractions of their length.
+
+    Returns
+    -------
+    numpy.ndarray(k, k, 3)
+        :math:`L_{ab}` for each axis, per molecule, in 1/(J·m·s); divide by
+        :math:`N_A^2` for mol²/(J·m·s).
+    """
+    X = np.asarray(X, dtype=float)
+    n, k, _ = X.shape
+    ts = (np.arange(n) * dt).tolist()
+    norm = (n - np.arange(n))[:, None]
+    # <Δx_a Δx_b> = 2 L_ab V kB T t along one axis
+    scale = A2_PER_PS / (2 * volume * 1.0e-30 * KB * temperature)
+
+    def slope(y):
+        return fit_slope(y, ts, start=start, end=end).slope * scale
+
+    auto = squared_displacement_sums(X) / norm[:, :, None]
+    L = np.zeros((k, k, 3))
+    for a in range(k):
+        for c in range(3):
+            L[a, a, c] = slope(auto[:, a, c])
+        for b in range(a + 1, k):
+            both = squared_displacement_sums(X[:, a] + X[:, b]) / norm
+            cross = (both - auto[:, a] - auto[:, b]) / 2
+            for c in range(3):
+                L[a, b, c] = L[b, a, c] = slope(cross[:, c])
+    return L
+
+
+def transference_numbers(L, q):
+    """The transference number of each species, :math:`t_a = q_a \\sum_b q_b L_{ab}
+    / \\sum_{cd} q_c q_d L_{cd}`, from its Onsager coefficients (k × k) and
+    charges."""
+    q = np.asarray(q, dtype=float)
+    total = float(q @ L @ q)
+    if total == 0:
+        return np.full(len(q), np.nan)
+    return q * (L @ q) / total
 
 
 def hill_formula(symbols):
@@ -252,10 +328,22 @@ class IonicConductivity(seamm.Node):
     # ------------------------------------------------------------------
     # The analysis
     # ------------------------------------------------------------------
-    def _read(self, path, configuration, ion_atoms, ion_charges, ions, masses):
+    def _read(
+        self,
+        path,
+        configuration,
+        ion_atoms,
+        ion_charges,
+        ions,
+        masses,
+        solvent_atoms=None,
+        solvent_weights=None,
+    ):
         """One run: the collective charge displacement and the centres of mass of
-        the ions in each frame, the interval between frames (ps), the mean volume
-        (Å³) and temperature (K), and whether the run is isotropic."""
+        the ions in each frame, the sum of the centres of mass of the solvent
+        molecules (for the solvent frame of the Onsager coefficients), the interval
+        between frames (ps), the mean volume (Å³) and temperature (K), and whether
+        the run is isotropic."""
         with open_md(path) as md:
             if not md.periodic:
                 raise RuntimeError(f"The MD in {path} is not periodic.")
@@ -275,16 +363,20 @@ class IonicConductivity(seamm.Node):
                 u = md.universe(configuration)
             P = []
             com = []
+            X0 = []
             V = []
             weights = [masses[m] / masses[m].sum() for m in ions]
             for ts in u.trajectory:
                 x = ts.positions
                 P.append(cell_dipole(x, ion_atoms, ion_charges))
                 com.append([w @ x[m] for m, w in zip(ions, weights)])
+                if solvent_atoms is not None:
+                    X0.append(solvent_weights @ x[solvent_atoms])
                 V.append(ts.volume)
         return {
             "P": np.array(P),
             "com": np.array(com),
+            "X0": np.array(X0) if solvent_atoms is not None else None,
             "dt": dt,
             "V": float(np.mean(V)),
             "T": T,
@@ -292,7 +384,7 @@ class IonicConductivity(seamm.Node):
         }
 
     @staticmethod
-    def _sample(Pc, com, dt, V, T, groups, start, end):
+    def _sample(Pc, com, dt, V, T, groups, start, end, X0=None, n_solvent=0):
         """σ and the self-diffusion coefficients, by component, of one run or
         block, and the MSDs for the graph.
 
@@ -301,7 +393,9 @@ class IonicConductivity(seamm.Node):
         dict
             ``sigma``: σ_xx, σ_yy, σ_zz (S/m); ``D``: (n_species, 3), m²/s;
             ``msd``: the collective MSD (e² Å²) and ``species msd`` the MSD of each
-            species (Å²), summed over x, y and z; ``V``, ``T``.
+            species (Å²), summed over x, y and z; ``V``, ``T``; ``L`` and ``L0``,
+            the Onsager coefficients (k × k × 3, per molecule, 1/(J·m·s)) in the
+            frame of the MD and relative to the solvent (None without solvent).
         """
         n = len(Pc)
         ts = (np.arange(n) * dt).tolist()
@@ -323,9 +417,20 @@ class IonicConductivity(seamm.Node):
                 for m in species_msd
             ]
         )
+        # The collective position of each species, and relative to the solvent's
+        # mean motion: X_a - (N_a / N_0) X_0
+        X = np.stack([com[:, g].sum(axis=1) for g in groups], axis=1)
+        L = onsager_coefficients(X, dt, V, T, start, end)
+        L0 = None
+        if X0 is not None and n_solvent > 0:
+            N = np.array([len(g) for g in groups], dtype=float)
+            X_rel = X - (N / n_solvent)[None, :, None] * np.asarray(X0)[:, None, :]
+            L0 = onsager_coefficients(X_rel, dt, V, T, start, end)
         return {
             "sigma": sigma,
             "D": D,
+            "L": L,
+            "L0": L0,
             "msd": msd.sum(axis=1),
             "species msd": [m[:, 3] for m in species_msd],
             "V": V,
@@ -410,8 +515,30 @@ class IonicConductivity(seamm.Node):
         # collective displacement of the charges
         q = {s: z[s] * scale for s in species}
 
+        # The neutral molecules, the solvent, for the solvent frame of the Onsager
+        # coefficients: the sum of their centres of mass is a weighted sum of atoms
+        molecules = configuration.find_molecules(as_indices=True)
+        classes = classify_molecules(charges, molecules, scale=scale)
+        solvent = [np.array(molecules[m], dtype=int) for m in classes["neutral"]]
+        n_solvent = len(solvent)
+        solvent_atoms = solvent_weights = None
+        if n_solvent > 0:
+            solvent_atoms = np.concatenate(solvent)
+            solvent_weights = np.concatenate(
+                [masses[m] / masses[m].sum() for m in solvent]
+            )
+
         runs = [
-            self._read(p, configuration, ion_atoms, ion_charges, ions, masses)
+            self._read(
+                p,
+                configuration,
+                ion_atoms,
+                ion_charges,
+                ions,
+                masses,
+                solvent_atoms,
+                solvent_weights,
+            )
             for p in self.paths
         ]
         nruns = len(runs)
@@ -429,7 +556,16 @@ class IonicConductivity(seamm.Node):
             n = min(len(r["P"]) for r in runs)
             samples = [
                 self._sample(
-                    r["P"][:n], r["com"][:n], dt, r["V"], r["T"], groups, start, end
+                    r["P"][:n],
+                    r["com"][:n],
+                    dt,
+                    r["V"],
+                    r["T"],
+                    groups,
+                    start,
+                    end,
+                    None if r["X0"] is None else r["X0"][:n],
+                    n_solvent,
                 )
                 for r in runs
             ]
@@ -439,15 +575,32 @@ class IonicConductivity(seamm.Node):
             n_blocks = max(
                 1, min(int(P["number of blocks"]), len(run["P"]) // MIN_BLOCK_FRAMES)
             )
+            X0s = (
+                [None] * n_blocks
+                if run["X0"] is None
+                else np.array_split(run["X0"], n_blocks)
+            )
             samples = [
-                self._sample(Pc, com, dt, run["V"], run["T"], groups, start, end)
-                for Pc, com in zip(
+                self._sample(
+                    Pc, com, dt, run["V"], run["T"], groups, start, end, X0, n_solvent
+                )
+                for Pc, com, X0 in zip(
                     np.array_split(run["P"], n_blocks),
                     np.array_split(run["com"], n_blocks),
+                    X0s,
                 )
             ]
             whole = self._sample(
-                run["P"], run["com"], dt, run["V"], run["T"], groups, start, end
+                run["P"],
+                run["com"],
+                dt,
+                run["V"],
+                run["T"],
+                groups,
+                start,
+                end,
+                run["X0"],
+                n_solvent,
             )
             if n_blocks == 1:
                 samples = [whole]
@@ -479,6 +632,15 @@ class IonicConductivity(seamm.Node):
                 )
                 used = result["sigma_NE, corrected"]
             result["ionicity"] = result["sigma"] / used if used > 0 else float("nan")
+            # The Onsager coefficients per mole and the transference numbers
+            qv = np.array([q[sp] for sp in species], dtype=float)
+            for key, L in (("", s["L"]), (", solvent", s["L0"])):
+                if L is None:
+                    continue
+                L = L.mean(axis=2)
+                result["L" + key] = L / NA**2
+                result["t" + key] = transference_numbers(L, qv)
+            result["sigma_L"] = E**2 * float(qv @ s["L"].mean(axis=2) @ qv)
             return result
 
         values = [derived(s) for s in samples]
@@ -508,6 +670,26 @@ class IonicConductivity(seamm.Node):
                 for sp in species
             }
             dD = best["dD"] if best is not None else np.mean([v["dD"] for v in values])
+
+        pairs = [(a, b) for a in range(len(species)) for b in range(a, len(species))]
+        frames = [""] + ([", solvent"] if n_solvent > 0 else [])
+        L_est = {
+            f: {
+                (a, b): estimate(
+                    lambda v, s, a=a, b=b, f=f: v["L" + f][a, b], 1 / L_UNIT
+                )
+                for a, b in pairs
+            }
+            for f in frames
+        }
+        t_est = {
+            f: {
+                sp: estimate(lambda v, s, i=i, f=f: v["t" + f][i])
+                for i, sp in enumerate(species)
+            }
+            for f in frames
+        }
+        sigma_L = estimate(lambda v, s: v["sigma_L"])
 
         sigma_components = np.array([s["sigma"] for s in samples])
         D_components = {
@@ -649,6 +831,7 @@ class IonicConductivity(seamm.Node):
         for line in lines + notes:
             printer.normal(__(line, indent=8 * " "))
         printer.normal("")
+        self._print_onsager(species, pairs, frames, L_est, t_est, sigma_L, sigma)
         self._print_samples(samples, values, species, source)
 
         state = report_state(self, printer, self.paths)
@@ -687,9 +870,109 @@ class IonicConductivity(seamm.Node):
         if record is not None:
             data["D, corrected"] = {sp: D_c[sp].value * D_UNIT for sp in species}
             data["sigma_NE, corrected"] = sigma_ne_c.value
+        # The Onsager coefficients (mol²/(J·m·s)) and transference numbers
+        for f, key in (("", ""), (", solvent", ", solvent frame")):
+            if f not in frames:
+                continue
+            L = {
+                f"{species[a]}-{species[b]}": e.value * L_UNIT
+                for (a, b), e in L_est[f].items()
+            }
+            data["L" + key] = L
+            data["transference numbers" + key] = {
+                sp: e.value for sp, e in t_est[f].items()
+            }
+            if all(e.stderr is not None for e in L_est[f].values()):
+                data["L,stderr" + key] = {
+                    f"{species[a]}-{species[b]}": e.stderr * L_UNIT
+                    for (a, b), e in L_est[f].items()
+                }
+            if all(e.stderr is not None for e in t_est[f].values()):
+                data["transference numbers,stderr" + key] = {
+                    sp: e.stderr for sp, e in t_est[f].items()
+                }
+        # The cation transference number t+, for a single cation: in the frame of
+        # the solvent if there is one, as measured
+        cations = [sp for sp in species if z[sp] > 0]
+        if len(cations) == 1:
+            f = frames[-1]
+            t_plus = t_est[f][cations[0]]
+            if np.isfinite(t_plus.value):
+                data["t+"] = t_plus.value
+                if t_plus.stderr is not None:
+                    data["t+,stderr"] = t_plus.stderr
         if state is not None:
             data.update(state_data(state))
         self.store_results(configuration=configuration, data=data)
+
+    def _print_onsager(self, species, pairs, frames, L_est, t_est, sigma_L, sigma):
+        """The table of the Onsager coefficients and transference numbers."""
+        headers = ["Property"]
+        names = {"": "MD frame", ", solvent": "Solvent frame"}
+        for f in frames:
+            headers += [names[f], PM]
+        headers.append("Units")
+        rows = []
+        for a, b in pairs:
+            row = [f"L({species[a]}, {species[b]})"]
+            for f in frames:
+                row.extend(L_est[f][(a, b)].formatted())
+            rows.append(row + [L_UNITS])
+        for sp in species:
+            row = [f"t({sp})"]
+            for f in frames:
+                row.extend(t_est[f][sp].formatted())
+            rows.append(row + [""])
+        text = tabulate(
+            rows,
+            headers=headers,
+            tablefmt="rounded_outline",
+            disable_numparse=True,
+            colalign=("left",) + ("decimal",) * (2 * len(frames)) + ("left",),
+        )
+        length = len(text.splitlines()[0])
+        printer.normal(
+            __(
+                "\n"
+                + "Onsager coefficients and transference numbers".center(length)
+                + "\n"
+                + text
+                + "\n",
+                indent=8 * " ",
+                wrap=False,
+                dedent=False,
+            )
+        )
+        lines = [
+            "L(a, b) is from the collective displacements of the centres of mass of "
+            "the ions of species a and b, L_ab = ⟨ΔX_a·ΔX_b⟩ / (6 V kB t), and the "
+            "transference number of species a is t_a = z_a Σ_b z_b L_ab / Σ_cd z_c "
+            "z_d L_cd (Fong et al. 2020). L(a, a) includes the correlations between "
+            "different ions of a, and L(a, b) those between ions of a and b. As a "
+            f"check, e²Σ z_a z_b L_ab = {sigma_L.value:.3g} S/m reproduces σ "
+            f"({sigma.value:.3g} S/m) but for the ions' internal motion.",
+        ]
+        if len(frames) > 1:
+            lines.append(
+                "The MD frame is that of the simulation, with no net momentum; the "
+                "solvent frame is relative to the mean motion of the neutral "
+                "molecules, which is the frame of the usual measurements of "
+                "transference numbers. σ is the same in both."
+            )
+        lines.append(
+            "These are collective properties, much noisier than the self-diffusion "
+            "coefficients: they need long runs, or many."
+        )
+        for line in lines:
+            printer.normal(__(line, indent=8 * " "))
+        printer.normal("")
+        self.references.cite(
+            raw=self._bibliography["Fong2020"],
+            alias="Fong2020",
+            module="ionic_conductivity_step",
+            level=1,
+            note="The Onsager coefficients and transference numbers.",
+        )
 
     def _print_samples(self, samples, values, species, source):
         """The values of each run or block, in the detailed output."""

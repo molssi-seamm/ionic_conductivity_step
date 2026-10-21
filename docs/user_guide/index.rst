@@ -21,6 +21,25 @@ equilibrium molecular dynamics, two ways:
 
 and their ratio σ/σ_NE, the **ionicity**.
 
+It also gives the **Onsager transport coefficients** L_ab of the ionic species and the
+**transference numbers** (Fong et al., Macromolecules 53, 9503 (2020)), from the
+collective displacements of the centres of mass of the ions of each species,
+Xₐ = Σ rᵢ:
+
+.. math::
+
+   L_{ab} = \lim_{t \to \infty} \frac{\langle \Delta \mathbf{X}_a(t) \cdot
+            \Delta \mathbf{X}_b(t) \rangle}{6 V k_B T t},
+   \qquad t_a = \frac{z_a \sum_b z_b L_{ab}}{\sum_{cd} z_c z_d L_{cd}}
+
+L(a, a) includes the correlations between different ions of a, and L(a, b) those
+between the ions of a and b; e² Σ z_a z_b L_ab is σ again, but for the ions' internal
+motion, which the table's note gives as a check. Both are given in two frames: that of
+the MD (no net momentum), and relative to the mean motion of the solvent -- the
+neutral molecules -- which is the frame of the usual measurements of transference
+numbers. σ is the same in both. Like σ, these are collective properties and noisy:
+they need long runs, or many.
+
 The ions are the molecules with a non-zero integer charge, monatomic like Na⁺ or
 molecular like BF₄⁻; each ion's self-diffusion is that of its centre of mass. The
 charges are the forcefield's. A machine-learned forcefield has no fixed charges, so for
@@ -107,12 +126,16 @@ Results
 * σ_NE by Nernst-Einstein, in the box and, with the correction, corrected, and the
   ionicity σ/σ_NE, with their errors;
 * the self-diffusion coefficient of each ion, in the box and corrected;
+* the Onsager coefficients L_ab (mol²/(J·m·s)) and the transference number of each
+  ion, in the frame of the MD and in that of the solvent, with their errors; and for
+  a single cation its transference number t₊ (in the solvent frame if there is a
+  solvent), which can be stored as a property;
 * the state of the runs: temperature, pressure, volume and density with their errors,
   and for runs at constant volume the equilibrium density at the target pressure when
   an NPT run before them gives the bulk modulus;
 * the numbers of runs and frames.
 
-σ, σ_NE and the ionicity can be stored as properties of the configuration, and all
+σ, σ_NE, the ionicity and t₊ can be stored as properties of the configuration, and all
 the results in variables and tables.
 
 Indices and tables
