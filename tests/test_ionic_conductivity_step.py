@@ -192,7 +192,7 @@ def test_formal_charges_without_md_charges(configuration, monkeypatch):
     node = ionic_conductivity_step.IonicConductivity()
     found = []
 
-    def read(path, configuration, ion_atoms, ion_charges, ions, masses):
+    def read(path, configuration, ion_atoms, ion_charges, ions, masses, *args):
         found.append((list(ion_charges), [list(i) for i in ions]))
         raise RuntimeError("stop after finding the ions")
 
@@ -206,3 +206,41 @@ def test_formal_charges_without_md_charges(configuration, monkeypatch):
     assert found[0][0] == [1.0, 1.0, -1.0, -1.0]
     assert any("formal" in t for t in printed)
     assert any("2 Na (+1), 2 Cl (-1)" in t for t in printed)
+
+
+def test_onsager_coefficients():
+    """Exact cases: species b moving exactly opposite to a has L_ab = -L_aa = -L_bb,
+    and species b moving with a has L_ab = L_aa; and on average over many random
+    walks of N walkers the scale is N D / (V kB T), with no cross term."""
+    rng = np.random.default_rng(5)
+    n, N, dt, D, V, T = 3000, 30, 0.1, 0.05, 30000.0, 300.0
+    r = np.cumsum(rng.normal(0, np.sqrt(2 * D * dt), size=(n, N, 3)), axis=0)
+    Xa = r.sum(axis=1)
+    L = ic.onsager_coefficients(np.stack([Xa, -Xa], axis=1), dt, V, T).mean(axis=2)
+    np.testing.assert_allclose(L[0, 1], -L[0, 0], rtol=1e-6)
+    np.testing.assert_allclose(L[1, 1], L[0, 0], rtol=1e-6)
+    L = ic.onsager_coefficients(np.stack([Xa, Xa], axis=1), dt, V, T).mean(axis=2)
+    np.testing.assert_allclose(L[0, 1], L[0, 0], rtol=1e-6)
+
+    # One collective walk is very noisy, so check the scale on average over many
+    n, N, reps = 1000, 10, 100
+    expected = N * D * ic.A2_PER_PS / (V * 1e-30 * ic.KB * T)
+    ratios = []
+    for _ in range(reps):
+        r = np.cumsum(rng.normal(0, np.sqrt(2 * D * dt), size=(n, 2 * N, 3)), axis=0)
+        X = np.stack([r[:, :N].sum(axis=1), r[:, N:].sum(axis=1)], axis=1)
+        ratios.append(ic.onsager_coefficients(X, dt, V, T).mean(axis=2) / expected)
+    mean = np.mean(ratios, axis=0)
+    assert 0.8 < mean[0, 0] < 1.2 and 0.8 < mean[1, 1] < 1.2
+    assert abs(mean[0, 1]) < 0.15  # independent species: no cross term
+
+
+def test_transference_numbers():
+    """t_a = z_a sum_b z_b L_ab / sum z_c z_d L_cd; the numbers of an electrolyte of
+    two ions add up to 1."""
+    L = np.array([[2.0, 0.5], [0.5, 3.0]])
+    t = ic.transference_numbers(L, [1, -1])
+    # z+ (z+ L++ + z- L+-) = 2 - 0.5; total = 2 - 1 + 3 = 4
+    np.testing.assert_allclose(t, [1.5 / 4, 2.5 / 4])
+    assert abs(t.sum() - 1) < 1e-12
+    assert np.all(np.isnan(ic.transference_numbers(np.zeros((2, 2)), [1, -1])))

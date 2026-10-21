@@ -209,6 +209,83 @@ metadata["results"] = {
         "type": "json",
         "units": "m^2/s",
     },
+    "L": {
+        "description": (
+            "The Onsager coefficients L_ab of the ionic species, in the frame of the MD"
+        ),
+        "dimensionality": "{species-species: value}",
+        "type": "json",
+        "units": "mol^2/(J*m*s)",
+    },
+    "L,stderr": {
+        "description": "The standard errors of the Onsager coefficients",
+        "dimensionality": "{species-species: value}",
+        "type": "json",
+        "units": "mol^2/(J*m*s)",
+    },
+    "L, solvent frame": {
+        "description": (
+            "The Onsager coefficients L_ab of the ionic species, relative to the mean "
+            "motion of the solvent"
+        ),
+        "dimensionality": "{species-species: value}",
+        "type": "json",
+        "units": "mol^2/(J*m*s)",
+    },
+    "L,stderr, solvent frame": {
+        "description": (
+            "The standard errors of the Onsager coefficients in the solvent frame"
+        ),
+        "dimensionality": "{species-species: value}",
+        "type": "json",
+        "units": "mol^2/(J*m*s)",
+    },
+    "transference numbers": {
+        "description": "The transference number of each ion, in the frame of the MD",
+        "dimensionality": "{species: value}",
+        "type": "json",
+        "units": "",
+    },
+    "transference numbers,stderr": {
+        "description": "The standard errors of the transference numbers",
+        "dimensionality": "{species: value}",
+        "type": "json",
+        "units": "",
+    },
+    "transference numbers, solvent frame": {
+        "description": (
+            "The transference number of each ion, relative to the mean motion of the "
+            "solvent"
+        ),
+        "dimensionality": "{species: value}",
+        "type": "json",
+        "units": "",
+    },
+    "transference numbers,stderr, solvent frame": {
+        "description": (
+            "The standard errors of the transference numbers in the solvent frame"
+        ),
+        "dimensionality": "{species: value}",
+        "type": "json",
+        "units": "",
+    },
+    "t+": {
+        "description": (
+            "The cation transference number, for a single cation: in the solvent "
+            "frame if there is a solvent"
+        ),
+        "dimensionality": "scalar",
+        "property": "cation transference number#Ionic Conductivity#{model}",
+        "type": "float",
+        "units": "",
+    },
+    "t+,stderr": {
+        "description": "The standard error of the cation transference number",
+        "dimensionality": "scalar",
+        "property": "cation transference number,stderr#Ionic Conductivity#{model}",
+        "type": "float",
+        "units": "",
+    },
     **state_results,
     "nruns": {
         "description": "The number of MD runs analyzed",

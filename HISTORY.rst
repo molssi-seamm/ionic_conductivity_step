@@ -1,6 +1,14 @@
 =======
 History
 =======
+2026.10.21.1 -- Onsager coefficients and transference numbers
+    * The step now also gives the Onsager transport coefficients L_ab of the ionic
+      species and the transference number of each ion (Fong et al. 2020), from the
+      collective displacements of the ions' centres of mass, with their errors. Both
+      are given in the frame of the MD and relative to the mean motion of the
+      solvent, the frame of the usual measurements. For a single cation, its
+      transference number t+ can be stored as a property.
+
 2026.10.21 -- The ionic conductivity with a machine-learned forcefield
     * An MD without fixed charges, as with a machine-learned forcefield, stopped the
       step with an error. The conductivity needs only the ions' net charges, so the
