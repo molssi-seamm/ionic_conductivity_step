@@ -163,3 +163,46 @@ def test_count_ions():
     assert ic.count_ions(charges, molecules) == (2, 1)
     assert ic.pairs_note(2, 1).startswith("There are only 1 cation-anion pairs")
     assert ic.pairs_note(10, 12) is None
+
+
+def test_formal_charges_without_md_charges(configuration, monkeypatch):
+    """An MD without fixed charges (an MLFF) finds the ions from the formal charges
+    of the structure, rather than stopping (ChemAI job 5357, 2026-10-21)."""
+    config, charges = configuration(3, 2, 2)
+    assert ic.formal_charges(config) is None  # no formal charges yet
+    config.atoms.add_attribute("formal_charge", coltype="int", default=0)
+    q = [0] * 9 + [1, 1, -1, -1]
+    config.atoms.get_column("formal_charge")[:] = q
+    np.testing.assert_array_equal(ic.formal_charges(config), q)
+
+    class FakeMD:
+        ion_charge_scale = 1.0
+
+        def charges(self, name):
+            return None
+
+        def masses(self, name):
+            return np.ones(charges.size)
+
+    @contextlib.contextmanager
+    def fake_open_md(path):
+        yield FakeMD()
+
+    monkeypatch.setattr(ic, "open_md", fake_open_md)
+    node = ionic_conductivity_step.IonicConductivity()
+    found = []
+
+    def read(path, configuration, ion_atoms, ion_charges, ions, masses):
+        found.append((list(ion_charges), [list(i) for i in ions]))
+        raise RuntimeError("stop after finding the ions")
+
+    monkeypatch.setattr(node, "_read", read)
+    printed = []
+    monkeypatch.setattr(ic.printer, "normal", lambda text: printed.append(str(text)))
+    node._id = ("1",)
+    node.paths = ["md.h5md"]
+    with pytest.raises(RuntimeError, match="stop after finding the ions"):
+        node.analyze(P=node.parameters.values_to_dict(), configuration=config)
+    assert found[0][0] == [1.0, 1.0, -1.0, -1.0]
+    assert any("formal" in t for t in printed)
+    assert any("2 Na (+1), 2 Cl (-1)" in t for t in printed)

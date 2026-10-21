@@ -90,6 +90,20 @@ def hill_formula(symbols):
     return "".join(e + (str(counts[e]) if counts[e] > 1 else "") for e in order)
 
 
+def formal_charges(configuration):
+    """The formal charge of each atom of the structure, or None if it has none.
+
+    For an MD without fixed charges (a machine-learned forcefield): the ions' net
+    charges are all the conductivity needs, and where the charge of an ion sits
+    within it does not matter for its displacement.
+    """
+    atoms = configuration.atoms
+    if "formal_charge" not in atoms:
+        return None
+    q = np.array([c or 0 for c in atoms.get_column_data("formal_charge")], dtype=float)
+    return q if np.any(q != 0) else None
+
+
 def count_ions(charges, molecules):
     """The number of cations and anions, from the charges of the atoms.
 
@@ -339,9 +353,28 @@ class IonicConductivity(seamm.Node):
             masses = md.masses("all")
             scale = md.ion_charge_scale
         if charges is None:
-            raise RuntimeError(
-                f"'{self.title}': the MD has no fixed charges, as with a "
-                "machine-learned forcefield, so there is no charge to follow."
+            # A machine-learned forcefield has no fixed charges, but the conductivity
+            # needs only the ions' net charges: their formal charges
+            charges = formal_charges(configuration)
+            if charges is None:
+                printer.normal(
+                    __(
+                        "The MD has no fixed charges, as with a machine-learned "
+                        "forcefield, and the structure has no formal charges, so "
+                        "there are no ions to follow: skipped.",
+                        indent=self.indent + 4 * " ",
+                    )
+                )
+                printer.normal("")
+                return
+            scale = 1.0
+            printer.normal(
+                __(
+                    "The MD has no fixed charges, as with a machine-learned "
+                    "forcefield, so the ions are found from, and carry, the formal "
+                    "charges of the structure.",
+                    indent=self.indent + 4 * " ",
+                )
             )
         charges = np.asarray(charges, dtype=float)
         masses = np.asarray(masses, dtype=float)
