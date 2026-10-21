@@ -23,8 +23,11 @@ and their ratio σ/σ_NE, the **ionicity**.
 
 The ions are the molecules with a non-zero integer charge, monatomic like Na⁺ or
 molecular like BF₄⁻; each ion's self-diffusion is that of its centre of mass. The
-charges are the forcefield's: a machine-learned forcefield has no fixed charges, so the
-step stops with a message for such MD. If the charges of the ions were scaled in the MD
+charges are the forcefield's. A machine-learned forcefield has no fixed charges, so for
+such MD the ions are found from, and carry, the formal charges of the structure (e.g.
++1 on Li⁺ and -1 on the P of PF₆⁻): the conductivity needs only each ion's net charge.
+Without formal charges either, the step says so and skips the analysis. If the charges
+of the ions were scaled in the MD
 (LAMMPS's "Scale the charges of ions by", e.g. 0.8), the ions are still found from their
 formal charges, and both σ and σ_NE use the charges the ions carried in the MD, zₛ
 times the factor: they are the conductivities of the scaled-charge model, and the

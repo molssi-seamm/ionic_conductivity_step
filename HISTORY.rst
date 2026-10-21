@@ -1,6 +1,12 @@
 =======
 History
 =======
+2026.10.21 -- The ionic conductivity with a machine-learned forcefield
+    * An MD without fixed charges, as with a machine-learned forcefield, stopped the
+      step with an error. The conductivity needs only the ions' net charges, so the
+      ions are now found from, and carry, the formal charges of the structure. With
+      no formal charges either, the step says so and skips the analysis.
+
 2026.10.19 -- Scaled ion charges
     * The ions of MD with scaled charges (LAMMPS's 'Scale the charges of ions by', e.g.
       0.8) were not recognized, since their charges are not integers. They are now
