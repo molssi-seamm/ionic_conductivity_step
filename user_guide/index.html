@@ -7,7 +7,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>User Guide &#8212; SEAMM Ionic Conductivity Plug-in 2026.10.21 documentation</title>
+    <title>User Guide &#8212; SEAMM Ionic Conductivity Plug-in 2026.10.21.1 documentation</title>
   
   
   
@@ -40,7 +40,7 @@
   <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=18bd87630a240e9c25be" />
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=18bd87630a240e9c25be" />
 
-    <script src="../_static/documentation_options.js?v=3c77f071"></script>
+    <script src="../_static/documentation_options.js?v=aa7b2be7"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -56,7 +56,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="2026.10.21" />
+  <meta name="docsearch:version" content="2026.10.21.1" />
   
     
     <script src="../_static/searchtools.js"></script>
@@ -526,6 +526,21 @@ equilibrium molecular dynamics, two ways:</p>
 σ_NE = e² / (V k_B T) Σₛ Nₛ zₛ² Dₛ, which treats the ions as independent;</p></li>
 </ul>
 <p>and their ratio σ/σ_NE, the <strong>ionicity</strong>.</p>
+<p>It also gives the <strong>Onsager transport coefficients</strong> L_ab of the ionic species and the
+<strong>transference numbers</strong> (Fong et al., Macromolecules 53, 9503 (2020)), from the
+collective displacements of the centres of mass of the ions of each species,
+Xₐ = Σ rᵢ:</p>
+<div class="math notranslate nohighlight">
+\[L_{ab} = \lim_{t \to \infty} \frac{\langle \Delta \mathbf{X}_a(t) \cdot
+         \Delta \mathbf{X}_b(t) \rangle}{6 V k_B T t},
+\qquad t_a = \frac{z_a \sum_b z_b L_{ab}}{\sum_{cd} z_c z_d L_{cd}}\]</div>
+<p>L(a, a) includes the correlations between different ions of a, and L(a, b) those
+between the ions of a and b; e² Σ z_a z_b L_ab is σ again, but for the ions’ internal
+motion, which the table’s note gives as a check. Both are given in two frames: that of
+the MD (no net momentum), and relative to the mean motion of the solvent – the
+neutral molecules – which is the frame of the usual measurements of transference
+numbers. σ is the same in both. Like σ, these are collective properties and noisy:
+they need long runs, or many.</p>
 <p>The ions are the molecules with a non-zero integer charge, monatomic like Na⁺ or
 molecular like BF₄⁻; each ion’s self-diffusion is that of its centre of mass. The
 charges are the forcefield’s. A machine-learned forcefield has no fixed charges, so for
@@ -602,12 +617,16 @@ note.</p>
 <li><p>σ_NE by Nernst-Einstein, in the box and, with the correction, corrected, and the
 ionicity σ/σ_NE, with their errors;</p></li>
 <li><p>the self-diffusion coefficient of each ion, in the box and corrected;</p></li>
+<li><p>the Onsager coefficients L_ab (mol²/(J·m·s)) and the transference number of each
+ion, in the frame of the MD and in that of the solvent, with their errors; and for
+a single cation its transference number t₊ (in the solvent frame if there is a
+solvent), which can be stored as a property;</p></li>
 <li><p>the state of the runs: temperature, pressure, volume and density with their errors,
 and for runs at constant volume the equilibrium density at the target pressure when
 an NPT run before them gives the bulk modulus;</p></li>
 <li><p>the numbers of runs and frames.</p></li>
 </ul>
-<p>σ, σ_NE and the ionicity can be stored as properties of the configuration, and all
+<p>σ, σ_NE, the ionicity and t₊ can be stored as properties of the configuration, and all
 the results in variables and tables.</p>
 </section>
 <section id="indices-and-tables">
