@@ -7,7 +7,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>ionic_conductivity_step package &#8212; SEAMM Ionic Conductivity Plug-in 2026.10.19 documentation</title>
+    <title>ionic_conductivity_step package &#8212; SEAMM Ionic Conductivity Plug-in 2026.10.21 documentation</title>
   
   
   
@@ -40,7 +40,7 @@
   <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=18bd87630a240e9c25be" />
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=18bd87630a240e9c25be" />
 
-    <script src="../_static/documentation_options.js?v=b2b4b3b2"></script>
+    <script src="../_static/documentation_options.js?v=3c77f071"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -55,7 +55,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="2026.10.19" />
+  <meta name="docsearch:version" content="2026.10.21" />
   
     
     <script src="../_static/searchtools.js"></script>
@@ -663,6 +663,15 @@ periodic cell, from dynamics that are not perturbed.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="ionic_conductivity_step.ionic_conductivity.formal_charges">
+<span class="sig-prename descclassname"><span class="pre">ionic_conductivity_step.ionic_conductivity.</span></span><span class="sig-name descname"><span class="pre">formal_charges</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">configuration</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ionic_conductivity_step/ionic_conductivity.html#formal_charges"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ionic_conductivity_step.ionic_conductivity.formal_charges" title="Link to this definition">#</a></dt>
+<dd><p>The formal charge of each atom of the structure, or None if it has none.</p>
+<p>For an MD without fixed charges (a machine-learned forcefield): the ions’ net
+charges are all the conductivity needs, and where the charge of an ion sits
+within it does not matter for its displacement.</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="ionic_conductivity_step.ionic_conductivity.hill_formula">
 <span class="sig-prename descclassname"><span class="pre">ionic_conductivity_step.ionic_conductivity.</span></span><span class="sig-name descname"><span class="pre">hill_formula</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">symbols</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ionic_conductivity_step/ionic_conductivity.html#hill_formula"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ionic_conductivity_step.ionic_conductivity.hill_formula" title="Link to this definition">#</a></dt>
 <dd><p>The formula of a molecule in Hill order.</p>
@@ -1062,6 +1071,7 @@ A SEAMM plug-in for Ionic Conductivity</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ionic_conductivity_step.ionic_conductivity.MIN_BLOCK_FRAMES"><code class="docutils literal notranslate"><span class="pre">MIN_BLOCK_FRAMES</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ionic_conductivity_step.ionic_conductivity.MIN_ION_PAIRS"><code class="docutils literal notranslate"><span class="pre">MIN_ION_PAIRS</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ionic_conductivity_step.ionic_conductivity.count_ions"><code class="docutils literal notranslate"><span class="pre">count_ions()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ionic_conductivity_step.ionic_conductivity.formal_charges"><code class="docutils literal notranslate"><span class="pre">formal_charges()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ionic_conductivity_step.ionic_conductivity.hill_formula"><code class="docutils literal notranslate"><span class="pre">hill_formula()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ionic_conductivity_step.ionic_conductivity.pairs_note"><code class="docutils literal notranslate"><span class="pre">pairs_note()</span></code></a></li>
 </ul>
